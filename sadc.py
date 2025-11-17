@@ -566,23 +566,7 @@ def run_simulation():
     line_z, = ax5.plot([], [], [], 'm', lw=2, label='Body Z')
     ax5.legend(loc='best')
 
-    def update_frame(idx):
-        qk = log_q[idx]
-        R_bi = quat_to_dcm(qk)  # body->inertial
-        origin = np.array([0.0, 0.0, 0.0])
-        X_axis = R_bi[:, 0]
-        Y_axis = R_bi[:, 1]
-        Z_axis = R_bi[:, 2]
-        line_x.set_data([origin[0], X_axis[0]], [origin[1], X_axis[1]])
-        line_x.set_3d_properties([origin[2], X_axis[2]])
-        line_y.set_data([origin[0], Y_axis[0]], [origin[1], Y_axis[1]])
-        line_y.set_3d_properties([origin[2], Y_axis[2]])
-        line_z.set_data([origin[0], Z_axis[0]], [origin[1], Z_axis[1]])
-        line_z.set_3d_properties([origin[2], Z_axis[2]])
-        return line_x, line_y, line_z
 
-    ani = animation.FuncAnimation(fig5, update_frame, frames=len(log_time), interval=50, blit=True)
-    # ani.save('attitude_tracking.mp4', fps=20)
 
     # =========================
     #  Controllability & Observability comments
@@ -599,6 +583,31 @@ def run_simulation():
     print("Gyro + magnetometer with time-varying B provide nonlinear attitude observability over the orbit.")
     print("Check eigenvalues above: if they are nonzero and diverse, B explores multiple directions,")
     print("which supports time-varying controllability and observability assumptions for magnetorquer-only control.")
+
+    def update_frame(idx):
+        qk = log_q[idx]
+        R_bi = quat_to_dcm(qk)  # body->inertial
+        origin = np.array([0.0, 0.0, 0.0])
+        X_axis = R_bi[:, 0]
+        Y_axis = R_bi[:, 1]
+        Z_axis = R_bi[:, 2]
+        line_x.set_data([origin[0], X_axis[0]], [origin[1], X_axis[1]])
+        line_x.set_3d_properties([origin[2], X_axis[2]])
+        line_y.set_data([origin[0], Y_axis[0]], [origin[1], Y_axis[1]])
+        line_y.set_3d_properties([origin[2], Y_axis[2]])
+        line_z.set_data([origin[0], Z_axis[0]], [origin[1], Z_axis[1]])
+        line_z.set_3d_properties([origin[2], Z_axis[2]])
+        return line_x, line_y, line_z
+
+    # IMPORTANT: blit=False for 3D animations
+    ani = animation.FuncAnimation(
+        fig5,
+        update_frame,
+        frames=len(log_time),
+        interval=50,
+        blit=False
+    )
+
     # =========================
     #  SAVE ALL OUTPUTS TO /results
     # =========================
@@ -623,8 +632,26 @@ def run_simulation():
     fig3.savefig(os.path.join(RESULTS_DIR, "clf_and_slack.png"), dpi=200)
     fig4.savefig(os.path.join(RESULTS_DIR, "dipole_commands.png"), dpi=200)
 
-    # Save animation MP4
-    ani.save(os.path.join(RESULTS_DIR, "attitude_tracking.mp4"), fps=20)
+    # Save animation: try MP4 via ffmpeg, fall back to GIF
+    from matplotlib.animation import FFMpegWriter, PillowWriter
+
+    mp4_path = os.path.join(RESULTS_DIR, "attitude_tracking.mp4")
+    gif_path = os.path.join(RESULTS_DIR, "attitude_tracking.gif")
+
+    try:
+        writer = FFMpegWriter(
+            fps=20,
+            metadata=dict(artist="AE642 CLF-QP"),
+            bitrate=1800,
+            codec="libx264"
+        )
+        ani.save(mp4_path, writer=writer)
+        print(f"Saved MP4 animation to {mp4_path}")
+    except Exception as e:
+        print(f"[WARN] Failed to write MP4 via ffmpeg ({e}), falling back to GIF.")
+        writer_gif = PillowWriter(fps=15)
+        ani.save(gif_path, writer=writer_gif)
+        print(f"Saved GIF animation to {gif_path}")
 
     # Text summary
     with open(os.path.join(RESULTS_DIR, "summary.txt"), "w") as f:
@@ -642,6 +669,7 @@ def run_simulation():
 
     print(f"\nAll logs, plots, and animation saved under ./{RESULTS_DIR}/")
 
+ 
 
 if __name__ == "__main__":
     run_simulation()

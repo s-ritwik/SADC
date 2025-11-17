@@ -7,7 +7,7 @@ Horizon length: 20
 Magnetorquer max dipole: 8.19 A·m²
 
 Controllability Indicator (Cov(B_body) eigenvalues):
-[9.99899652e-01 1.55031126e-05 3.34586316e-06]
+[9.99823379e-01 8.69219524e-05 8.20063773e-06]
 
 Observability:
 Gyro + magnetometer ensure nonlinear attitude observability over orbit.
