@@ -1,0 +1,1774 @@
+Available online at www.sciencedirect.com
+
+ScienceDirect
+Advances in Space Research 74 (2024) 5745–5766
+www.elsevier.com/locate/asr
+
+Characterization and veriﬁcation of the optimal feedback gain of
+a satellite magnetorquer-based attitude control system
+Thanayuth Panyalert a,b, Shariﬀ Manuthasna b, Jormpon Chaisakulsurin b, Tanawish Masri b,
+Kritsada Palee b, Pakawat Prasit b, Peerapong Torteeka b, Poom Konghuayrob a,⇑
+a
+
+School of Engineering, Department of Robotics and Artificial Intelligence, King Mongkut’s Institute of Technology Ladkrabang, No.1, Chalong-Krung,
+1-Alley, Ladkrabang, Bangkok 10520, Thailand
+b
+National Research Infrastructure for Deep-Space Exploration Project and Research Group, National Astronomical Research Institute of Thailand
+(Public Organization), No.260, Don-Kaew, Mae-Rim, Chiang-Mai 50180, Thailand
+Received 24 October 2023; received in revised form 12 August 2024; accepted 15 August 2024
+Available online 23 August 2024
+
+Abstract
+In spacecraft mission planning and operation, the attitude determination and control subsystem (ADCS) of a satellite provides information about the orientation of the satellite in the inertial reference frame. Furthermore, this subsystem produces the control actions
+required to adjust the orientation of the satellite, especially in the low-Earth orbit (LEO) regime. This paper focuses on the satellite’s
+three-axis attitude control problem within the context of active and passive control, which includes detumbling control, pointing control,
+magnetic control, and attitude stabilization after solar panel wing deployment using magnetorquers as the primary actuators. The objective is to stabilize and reduce the angular rate while orienting the satellite to the desired attitude. The proposed satellite attitude control
+system (ACS) strategies are designed, developed, characterized, and veriﬁed. These strategies encompass the B-dot control algorithm for
+detumbling control along with pointing control and attitude stabilization after solar panel wing deployment. hardware-in-the-loop simulation (HiLs) tests are conducted to assess the performance of the satellite magnetorquer-based ACS in the presence of noise. These tests
+involve a relative Earth’s magnetic ﬁeld (EMF) generator in conjunction with SGP-4-based satellite orbital propagator high-level control
+software. Additionally, cascade proportional-integral-derivative (PID) and state-dependent Riccati equation (SDRE) controllers are
+implemented to generate suﬃcient torque using three-axis magnetorquers on a frictionless air-bearing platform. The platform is balanced
+to closely simulate the dynamic motion of a spacecraft in space. The testing includes a single initial condition and three inertia conditions
+for stabilization after solar panel wing deployment. Finally, the eﬀectiveness of the cosimulation as a primary experiment through an
+integrated HiLs process is validated. This comprehensive approach conﬁrms the control system’s performance and its ability to meet
+mission requirements.
+Ó 2024 COSPAR. Published by Elsevier B.V. All rights are reserved, including those for text and data mining, AI training, and similar
+technologies.
+
+Keywords: Satellite attitude control system; Three-axis magnetorquer; Helmholtz cage; Hardware-in-the-Loop simulation; Control strategies
+
+1. Introduction
+
+⇑ Corresponding author.
+
+E-mail address: poom.konghuayrob@gmail.com (P. Konghuayrob).
+
+The attitude determination and control subsystem
+(ADCS) is an essential component that ensures satellite stability and accuracy in delivering payloads to speciﬁc targets. It comprises two interconnected subsystems: the
+
+https://doi.org/10.1016/j.asr.2024.08.047
+0273-1177/Ó 2024 COSPAR. Published by Elsevier B.V. All rights are reserved, including those for text and data mining, AI training, and similar
+technologies.
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+through the HiLs is critical to ensure that the developed
+ACS can provide stabilization after deployment.
+This work primarily focuses on validating the eﬀectiveness of a control algorithm tested through the HiLs using
+a three-axis magnetorquer for detumbling and orienting
+the satellite model. This validation is achieved during the
+detumbling phase scenario employing a cascade PID controller and an SDRE controller. Additionally, the SDRE
+controller is utilized to stabilize the solar panel wings after
+deployment. The performance of both controllers is then
+veriﬁed using an onboard computer.
+This paper is organized as follows: Section 2 describes
+the satellite model, including the satellite attitude representations, attitude dynamics, and satellite magnetorquerbased attitude control system. Control strategies are introduced in Section 3. In Section 4, the main equipment of the
+HiLs architecture is presented. In Section 5, experimental
+results are presented to illustrate the eﬀectiveness of the
+control strategy, and the results are discussed. Finally, in
+Section 6, the conclusions and proposals for future work
+are presented.
+
+attitude determination system (ADS) and the attitude control system (ACS). ADSs utilize sensors to determine a
+satellite’s attitude or angular rates, while ACSs employ
+actuators, attitude control algorithms, and controllers to
+control the satellite to the desired orientation (Pelton and
+Madry, 2020). The ADCS holds considerable importance
+in satellite missions because it provides crucial attitude
+information and helps stabilize the satellite (Wertz, 2012;
+Paluszek, 2023; Lin and Juang, 2014). Among the various
+ACS actuators, the magnetorquer is particularly noteworthy. Generating a magnetic ﬁeld that interacts with the
+Earth’s magnetic ﬁeld (EMF) is an eﬃcient and reliable
+strategy, especially in low-Earth orbits (LEOs) (Silani
+and Lovera, 2005). During the satellite’s transition from
+the detumbling phase, which is characterized by high angular rates, to the nominal mission, the ADCS must ensure
+the controllability of the satellite’s attitude. This task
+involves reducing the initial angular rate and achieving stabilization (Avanzini and Giulietti, 2012). The hardware-inthe-loop simulation (HiLs) methodology oﬀers an intriguing approach for testing and validating guidance, navigation, and control software algorithms. It allows for onground testing, enabling a thorough assessment and veriﬁcation of software performance.
+The HiLs setup encompasses several vital components.
+First, a Helmholtz cage is utilized to accurately simulate
+the EMF vector, replicating the eﬀects experienced by the
+satellite during orbital motion. Second, a simulation loop
+incorporates a magnetometer to provide real-time feedback, and an air-bearing platform facilitates nearfrictionless rotational motion, allowing for the simulation
+of satellite attitude dynamics under the control of a
+magnetorquer-based ACS (da Silva et al., 2021; da Silva
+et al., 2019; Chaisakulsurin et al., 2023; Chesi et al.,
+2015). The utilization of the HiLs for satellite process veriﬁcation oﬀers numerous beneﬁts, including resource, time,
+and cost savings. By conducting simulations using HiL
+technology, designers can obtain valuable insights into
+potential causes of failure and make necessary adjustments
+to the control algorithm (Corpino and Stesina, 2014). This
+iterative process enables continuous improvement and
+reﬁnement of a satellite’s attitude control system. Research
+on satellite ACSs has recently become a trending topic (Li
+et al., 2014). The controllers of linear strategies, such as the
+PD controller, are widely used in ACS because of their simple structure and good stability (Lovera and Astolﬁ, 2004;
+Yi and Anvar, 2013). The LQR controller stabilizes a
+three-axis satellite (Morozov and Kalenova, 2020;
+Arantes Jr et al., 2007), and the satellite ACS using magnetic torquers has been simulated under two inertia conditions (after and before the boom extension) (Miyata and
+van der Ha, 2009). Several software-in-the-loop control
+techniques have also been developed. However, ground
+testing, such as the HiLs, is still necessary to continuously
+improve the performance of the ACS system (da Silva
+et al., 2021; Cervettini et al., 2020). Thus, the control strategy veriﬁcation and validation of ground-based testing
+
+2. Satellite model
+In this section, the proposed methodology and the
+approach to computing the orientation of satellites are
+introduced. Next, the models used for characterization
+and veriﬁcation are presented, and ﬁnally, the approach
+to controlling the satellite’s attitude is described.
+To validate and verify their performance, the various
+control methods are simulated under identical conditions.
+The satellite model serves as the control object in this project. This particular satellite model, as shown in Fig. 1,
+weighs 17.7 kg and measures 200  200  200 mm undeployed. It functions as a three-axis stabilized satellite that
+uses only a magnetic controller for detumbling along with
+pointing control and attitude stabilization after solar panel
+wing deployment. The attitude control is managed by three
+magnetorquers, which are the only onboard actuators.
+These magnetorquers are oriented along the nominal principal body axes. Furthermore, the satellite model includes a
+movable simulated mass in the form of solar panel wings
+designed to simulate changes in the inertia tensor after
+the deployment of the solar panel wings.
+The initial phase is the detumbling period, which occurs
+after the satellite separates from the launcher. During this
+phase, we focus on reducing the satellite’s rotational rates.
+Once these rotation rates reach an adequately low level,
+solar panel wings are deployed (Paluszek, 2023). This
+action prompts passive attitude stabilization through the
+nonholonomic motion planning eﬀect (Ge et al., 2007).
+The subsequent mission phase involves normal-mode operations. Throughout this phase, the satellite must be maneuvered into the local vertical local horizontal system
+(LVLH), which represents an Earth-pointing attitude, as
+depicted in Fig. 2. The concept of the control phases is
+illustrated in Fig. 3.
+5746
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 1. Satellite model.
+
+tion. The Euler angle rotation yaw-pitch-roll sequence is
+employed to depict the orientation of this satellite, as illustrated in Fig. 4, with a 3–2-1 Euler angle set. The ﬁrst rotation occurs around the z-axis (yaw). The second rotation is
+around the y-axis (pitch), and the third rotation is around
+the x-axis (roll) (Paluszek, 2023).
+2
+
+C321
+
+coshcosw
+6
+¼ 4 cos/sinw þ sin/sinhcosw
+sin/sinw þ cos/sinhcosw
+
+coshsinw
+cos/cosw þ sin/sinhsinw
+sin/cosw þ cos/sinhsinw
+
+sinh
+
+3
+
+7
+sin/cosh 5:
+cos/cosh
+ð1Þ
+
+The Euler angle are easily determined by transforming to
+the quaternion using a two-step process. The quaternion
+is ﬁrst transformed into a DCM. The DCM element can
+be expressed in the associated quaternion (Markley and
+Crassidis, 2014):
+2
+
+q20 þ q21  q22  q23
+6
+Cq ¼ 4 2ðq1 q2  q0 q3 Þ
+
+Fig. 2. Earth-centered inertial frame, body frame and LVLH coordinate
+system.
+
+2ðq1 q3 þ q0 q2 Þ
+
+2ðq1 q2 þ q0 q3 Þ
+q20  q21 þ q22  q23
+2ðq2 q3  q0 q1 Þ
+
+3
+2ðq1 q3  q0 q2 Þ
+7
+2ðq2 q3 þ q0 q1 Þ 5
+q20  q21  q22 þ q23
+
+ð2Þ
+
+2.1. Attitude representations
+
+Then, the set of Euler angles are extracted from the DCM
+Eq. (2) depending on the Euler angle sequence, except for
+singular rotations. The yaw-pitch-roll Euler angles (3-2-1)
+can be converted from the DCM. Similarly, a quaternion
+can be determined from a set of Euler angles using a
+two-step transformation. This set of Euler angles is ﬁrst
+transformed into a DCM using Eq. (1), and then the
+quaternion can be found from the DCM elements. The
+squares of each quaternion term are calculated using the
+following numerical method in (Markley and Crassidis,
+2014). In this task, the DCM in terms of quaternion is used
+to compute the magnetic ﬁeld in the body frame, expressed
+in terms of the attitude matrix, which will be described in
+Section 2.3.
+
+The satellite attitude representation is deﬁned as a set of
+3  3 rotation matrices that describe the rigid body orientation of an initial reference frame with respect to a second
+reference frame. However, many sequences of attitude representations can be used to deﬁne a satellite’s orientation,
+and some of the common representations used in this task
+are the Euler angle rotation yaw-pitch-roll sequence in the
+direction cosine matrix (DCM), as described in Eq. (1), is a
+mathematical parameter representing the attitude orientation of a three-dimensional body. These parameters serve
+as the three-axis attitude transformation that describes
+the direction from the ﬁxed frame to the body frame. Euler
+angles are a common representation of attitude or orienta5747
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 3. Satellite concept of operations.
+
+Fig. 4. Euler angle diagram.
+
+tion, velocity, or orientation in space to achieve speciﬁc
+mission objectives, such as pointing instruments, maintaining stability, or adjusting orbital parameters. The satellite
+attitude control system plays a crucial role in satellite
+pointing, stabilization, orbital maneuvers, attitude synchronization, and precision control during scientiﬁc observations or payload operations.
+The magnetic attitude dynamics are modeled by considering the satellite’s rotational behavior when magnetic
+actuation is employed. A satellite is regarded as a rigid
+body capable of rotating around its center of mass. Euler
+angles are used to transform the body frame into an inertial
+reference frame to describe the satellite’s attitude. The
+angular rate of the satellite, represented in the body frame,
+corresponds to its rotation relative to the inertial reference
+frame. Euler’s equation is employed to approximate the
+dynamic equation of the satellite as follows: (Wertz, 2012):
+
+A quaternion is a four-dimensional vector attitude representation by four variables compared to three variables
+in Euler angles. This single four-element model comprises
+!
+a scalar term q0 and a vector term q (Markley and
+Crassidis, 2014). Quaternions can be considered in the following way:
+q ¼ q0 þ q1^i þ q2^j þ q3 ^k;
+ð3Þ
+ !
+!
+where q ¼ q0 ; q ; q0 is the scalar part, q ¼ ðq1 ; q2 ; q3 Þ is
+the vector part, and ^i; ^j and ^k are the unit vectors of the
+quaternion.
+2.2. Attitude dynamics
+A satellite attitude control system is a system or set of
+components and algorithms designed to control and
+manipulate the orientation or attitude of a satellite. Attitude control involves changing the satellite’s angular posi-
+
+Ix_ ¼ x  Ix þ s;
+5748
+
+ð4Þ
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+smtq ¼ m  b;
+
+
+T
+where s ¼ sx sy sz is the torque vector expressed in the
+
+T
+satellite body frame, x ¼ xx xy xz is the angular rate,
+and I is the inertia tensor of the satellite body frame. Based
+on magnetic actuation, such as through magnetorquers,
+Eq. (4) can then be modiﬁed as follows:
+Ix_ ¼ x  Ix þ smtq þ sdist ;
+
+ð8Þ
+bt ¼ Cq;t  bint;t ;
+
+T
+where bt ¼ bx;t by;t bz;t is the magnetic ﬁeld in the body
+frame expressed in terms of the attitude matrix Cq;t . The
+magnetic ﬁeld vector expressed in the Earth-centered inertial (ECI) coordinates is denoted as bint;t . The variable t represents time, ranging within 0; 1; 2; . . . ; n as a real number
+sequence.
+To reduce the angular rate, a detumbling controller is
+necessary. The B-dot controller, widely recognized for its
+eﬀectiveness in computing magnetic dipole moments for
+detumbling satellites, was chosen for this project because
+of its performance near the required attitude
+(Ovchinnikov et al., 2018), recognized eﬀectiveness, simplicity, and widespread adoption (Markley and Crassidis, 2014;
+Stickler and Alfriend, 1976). The magnetic dipole moment
+mb;t generated with the use of a three-axis magnetorquer is
+proportional to the time derivative of bt , performed in a
+noninertial satellite frame and gain k b as follows:
+
+ð5Þ
+
+where smtq is the vector of the magnetic torques achieved by
+the magnetorquers, and sdist is the vector of the external
+disturbance torques (Wertz, 2012).
+2.3. Satellite magnetorquer-based attitude control system
+A magnetorquer serves as an actuator for controlling
+the satellite attitude. It generates a magnetic dipole
+
+T
+moment, represented as m ¼ mx my mz , from the coil
+component. The proposed three-axis square air-core magnetorquers have been speciﬁcally designed for use in this
+project. Fig. 5 illustrates the three orthogonal magnetorquers, which necessitate independent control along their
+respective axes. Eq. (6) represents the magnetic moment
+associated with each air-core magnetorquer as follows:
+m ¼ i  n  S:
+
+ð7Þ
+
+b_ t  bt  xt ;
+
+ð9Þ
+
+k b _
+¼
+bt
+jjbt jj
+
+ð10Þ
+
+mb;t
+
+ð6Þ
+
+b_ t corresponds to the time derivative of the measured magnetic ﬁeld in the body frame, where the applied torque
+rotates the rigid body in the opposite direction. The
+approximation of b_ can be obtained using the equation
+speciﬁed in Eq. (9) (Stickler, 1972; Stickler and Alfriend,
+1976). For this project, detumbling and pointing control
+using a magnetorquer are presented, and an algorithm is
+implemented in MATLAB to assess the performance of
+the satellite magnetorquer-based ACS. Subsequently, the
+control strategies are incorporated, and the experimental
+results section validates the eﬀectiveness of the implemented algorithms.
+To ensure the accuracy of the magnetorquers, the percentage diﬀerence in the magnetic ﬁeld intensity is assessed
+by comparing the calculated magnetic ﬁeld intensity with
+the measured values. This veriﬁcation process serves to
+conﬁrm the reliability and precision of the magnetorquers.
+The magnetic ﬁeld intensity of the magnetorquer, denoted
+as mmtq , is computed using the Biot-Savart law (Bell and
+Marino, 1989), as depicted in Eq. (11), and the percentage
+diﬀerence of the magnetic ﬁeld intensity, denoted as %error, can be deﬁned as
+
+1 
+12
+  2l0 nia2sq 
+bmtq !
+z ¼
+;
+ð11Þ
+z2
+2a2sq þ !
+z2
+a2sq þ !
+p
+
+where i is the current, n is the number of windings in the
+coil, and S is the area enclosed by a turn of the spiral coil.
+This magnetic dipole moment interacts with the EMF, generating torque that enables control over the orientation of
+the satellite. The magnitude of the current regulates the
+strength of the dipole moment. The control torque produced by the magnetorquers can be described by (Wertz,
+2012)
+
+bmtq  bmea
+ 100:
+ð12Þ
+bmea
+In Eq. (11), the variable !
+z represents the distance from the
+
+%error ¼
+
+measurement point along the z-axis. The magnetic constant
+is denoted as l0 ¼ 4p  107 H/m, and asq represents the
+half-length of the square coil. The magnetic dipole moment
+
+Fig. 5. Proposed three orthogonal magnetorquers.
+5749
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+where eðk Þ ¼ rðk Þ  y ðk Þ is the system error, rðk Þ
+denotes the desired Euler angle and the required velocity
+components (/; h; w; 0; 0; 0), and y ðk Þ represents the
+measured attitude include (/; h; w; xx ; xy ; xz ), k is the
+sampling index, K p is the proportional gain, K i is the integral gain, K d is the derivative gain, and T is the sampling
+period.
+A cascade PID controller incorporating two control
+loops is utilized in this task. The inner loop consists of a
+primary PD controller responsible for regulating the angular rate, while the outer loop features a secondary PI controller tasked with controlling the Euler angles. Fig. 7
+schematizes the satellite model and the designed cascade
+PID controller. The PI controller aims to minimize
+ the
+
+error in the satellite model’s attitude Euler angles eang .
+The output of the PI controller serves as the reference signal for the inner loop ðrvel Þ, which is mathematically
+expressed in Eq. (15):
+
+from this veriﬁcation can be computed using Eq. (13)
+below:
+  
+1 
+12
+4bmea !
+z p 
+mmea ¼
+:
+ð13Þ
+a2sq þ !
+z2
+2a2sq þ !
+z2
+2l0
+Here, mmea represents the measured magnetic dipole
+moment of the magnetorquer. The closed-loop satellite
+magnetorquer-based attitude control system comprises
+magnetorquers, attitude sensors, an attitude controller,
+and a satellite model, as depicted in Fig. 6.
+3. Control strategies
+The control strategies implemented in this task, including the use of cascade proportional-integral-derivative
+(PID) and state-dependent Riccati equation (SDRE) controllers, are presented in this subsection. These controllers
+are used to generate suﬃcient torque using the three-axis
+magnetorquers of the satellite model to interact with the
+EMF simulation to stabilize and reach the desired attitude.
+
+rvel ðk Þ ¼ rvel ðk  1Þ þ
+
+3.1. Cascade PID control
+
+þ
+
+The satellite magnetorquer-based ACS operates in a
+closed-loop conﬁguration for detumbling along with pointing control, incorporating magnetorquers, attitude sensors,
+an attitude controller, and a satellite model. For this study,
+a cascade PID controller is devised to regulate the attitude
+of the satellite model. The structure of the satellite attitude
+control system, incorporating the cascade PID controller,
+is presented in Fig. 7. The discrete-time form of the PID
+
+controller is expressed by Eq. (14) (Aström
+and
+HÄgglund, 2006):
+uð k Þ ¼ uð k  1Þ þ
+þ
+
+K p þ K i
+
+Kp þ Ki
+
+K p;ang þ K i;ang
+
+K p;ang þ K i;ang
+
+T
+eang ðk Þ
+2
+
+T
+eang ðk  1Þ:
+2
+
+ð15Þ
+
+The system error of the Euler angles is represented by
+eang ðk Þ ¼ rang ðk Þ  y ang ðk Þ, where rang ðk Þ denotes the desired
+Euler angles and y ang ðk Þ represents the measured Euler
+angles. The PD controller is responsible for adjusting the
+angular rate. Importantly, a relationship exists between
+the angular rate and the Euler angles. Modifying the angular rate induces changes in the Euler angles, which are
+interdependent. Consequently, controlling the angular rate
+entails manipulating the Euler angles to achieve the desired
+attitude. The torque that should ideally be produced by the
+magnetorquers, determined by the control output usat and
+incorporating the cascade PID controller, are determined
+using Eq. (16) as follows:
+
+T Kd
+þ
+e ðk Þ
+2
+T
+
+T Kd
+Kd
+
+eðk  2Þ;
+eðk  1Þ þ
+2
+T
+T
+ð14Þ
+
+Fig. 6. Structure of the satellite attitude control system.
+
+5750
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 7. Structure of the satellite attitude control system with a cascade PID controller.
+
+usat ðk Þ ¼ usat ðk  1Þ þ
+þ
+þ
+
+K p;vel 
+
+K p;vel þ
+
+K d;vel
+evel ðk Þ
+T
+
+control problems associated with the magnetorquer-based
+attitude model of a satellite. Speciﬁcally, it aims to address
+detumbling along with pointing control and stabilization
+after solar panel wing deployment, treating them as problems of nonholonomic motion planning. The mathematical
+representation of the magnetorquer-based attitude model
+of a satellite, discussed herein, is nonlinear and can be
+expressed by Eq. (20).
+8
+/_ ¼ xx þ sin/tanhxy þ cos/tanhxz
+>
+>
+>
+>
+>
+>
+h_ ¼ coshxy  sin/xz
+>
+>
+>
+>
+sin/xy cos/xz
+>
+_
+>
+< w¼
+cosh
+:
+ð20Þ
+ðIy Iz Þ
+>
+x_ x ¼ Ix xy xz þ Isxx
+>
+>
+>
+>
+s
+xÞ
+>
+>
+xx xz þ Iyy
+x_ y ¼ ðIz I
+>
+Iy
+>
+>
+>
+>
+ðIx Iy Þ
+:
+x_ z ¼ Iz xx xy þ sIzz
+
+K d;vel
+evel ðk  1Þ
+T
+
+K d;vel
+evel ðk  2Þ:
+T
+
+ð16Þ
+
+where evel ðk Þ ¼ rvel ðk Þ  y vel ðk Þ represents the angular rate
+system error, where y vel ðk Þ represents the measured angular
+rate. The control signal usat is expressed in terms of angular
+velocities, which are then used to calculate the time derivative of the measured magnetic ﬁeld in the body frame, using
+Eq. (9) can be expressed as following:
+b_ t  bt  usat;t
+
+ð17Þ
+
+where usat;t as the time-dependent control signal. To estimate the magnetic dipole moment required in the opposite
+direction to reduce the rotation rate, given by Eq. (10),
+k b _
+mb;t ¼ jjb
+bt , the magnetorquers generate this moment by
+t jj
+supplying enough power so that the estimated Eq. (6) can
+be expressed as follows:
+mb;t
+ð18Þ
+it ¼
+nS
+
+The state-space model of discrete-time system satellite
+dynamics can be expressed with Eq. (21) (Lewis et al.,
+2012) as follows:
+xtþ1 ¼ Axt þ But ;
+yt ¼ Cxt þ Dut ;
+
+
+T
+where the state vector x is deﬁned as / h w xx xy xz ; ut
+is deﬁned as the control torque, A is the state matrix, B is
+the input matrix, and C is the output matrix. The linearity
+of the system is crucial for establishing a linear timeinvariant (LTI) system. System linearization can be
+attained by calculating the Jacobian matrix, as exempliﬁed
+by the following equation:
+3
+2 @f @f
+1
+1
+1
+. . . @f
+@x1
+@x2
+@x6
+7
+6 @f @f
+6 2
+2
+2 7
+. . . @f
+@x1
+@x2
+@x6 7
+@f i 6
+7:
+ð22Þ
+Ji;j ¼
+¼6
+.. 7
+.. . .
+@xj 6
+7
+6 ...
+.
+.
+.
+5
+4
+@f 6
+@f 6
+@f 6
+.
+.
+.
+@x1
+@x2
+@x6
+
+where it is the time-dependent current used to drive the
+magnetorquers to generate this moment. Then, the timedependent torque smtq;t applied to the system to reduce
+the system error can be calculated from
+smtq;t ¼ mb;t  bt :
+
+ð21Þ
+
+ð19Þ
+
+3.2. SDRE control
+Over the past decade, state-dependent Riccati equation
+(SDRE) control has gained widespread recognition and
+popularity. It presents a highly eﬀective algorithm for synthesizing nonlinear feedback controls, accommodating
+nonlinearities in the system states, and providing substantial design ﬂexibility through state-dependent weighting
+matrices (Çimen, 2008). This paper focuses on employing
+an SDRE nonlinear regulator to address nonlinear optimal
+
+Therefore, the comprehensive linearized system of the
+satellite attitude model can be expressed as Eq. (23).
+
+5751
+
+T. Panyalert et al.
+
+2
+6
+6
+6
+6
+6
+6
+A¼6
+6
+6
+6
+6
+6
+4
+
+Advances in Space Research 74 (2024) 5745–5766
+
+xy cos/tanh  xz tanhsin/
+
+xz cos/ðtan2 h þ 1Þ þ xy sin/ðtan2 h þ 1Þ
+
+0
+
+1
+
+tanhsin/
+
+xz cos/  xy sin/
+ðxy cos/þxz sin/Þ
+
+0
+
+0
+
+0
+
+cos/
+
+0
+
+0
+
+sin/
+cosh
+
+0
+
+0
+
+ðxz ðIy Iz ÞÞ
+0
+
+
+
+cosh
+
+ðsinhðxz cos/xy sin/ÞÞ
+
+0
+
+21
+
+0
+
+Ix
+
+6
+B¼6
+40
+0
+
+1
+Iy
+
+0
+
+0
+
+3
+
+cos2 h
+
+0
+
+Ix
+
+0
+
+0
+
+0
+
+ ðxz ðIIxyIz ÞÞ
+
+0
+
+0
+
+0
+
+ðxy ðIx Iy ÞÞ
+
+ðxx ðIx Iy ÞÞ
+
+Iz
+
+Iz
+
+2
+
+0
+7
+6
+7
+0 5; C ¼ 4 0
+1
+0
+I
+
+0
+
+0 1
+
+0
+
+0
+0
+
+0 0
+0 0
+
+1
+0
+
+0
+
+3
+
+cos/tanh
+
+3
+
+7
+7
+7
+7
+cos/
+ cosh 7
+7
+ðxy ðIy Iz ÞÞ 7
+7;
+7
+Ix
+7
+ðxx ðIx Iz ÞÞ 7
+
+7
+Iy
+5
+0
+sin/
+
+7
+0 5:
+1
+
+z
+
+ð23Þ
+
+The structure of a satellite attitude control system with an
+SDRE controller is shown in Fig. 8. The SDRE approach
+to acquiring a suboptimal solution for the cost functional
+Jcost and system Eq. (24) is outlined as follows: Utilize
+direct parameterization to convert the nonlinear dynamics
+into the state-dependent coeﬃcient form presented in Eqs.
+(21)–(23) and subsequently solve the associated SDRE provided below.
+Z
+ T
+
+Jcost ¼
+x Qx þ uT Ru dt
+ð24Þ
+
+used to validate the detumbling along with the pointing
+control algorithm and stabilization after solar panel wing
+deployment of the satellite. In particular, when solar panel
+wings are deployed on a free-ﬂoating space base body,
+which is treated as a problem of nonholonomic motion
+planning, the ﬁrst major task is to successfully stabilize
+the satellite by adapting to changes in the inertia tensor.
+The controllability of the spacecraft’s base body attitude
+after the deployment of solar panel wings can be improved
+through an optimal control method for nonlinear systems
+(Ge et al., 2007). The SDRE method is employed as an
+optimal control approach in this task for nonlinear systems
+to stabilize the deployment of solar panel wings using magnetorquers. To generate torque that should ideally be produced by magnetorquers, the control torque from SDRE
+control ut is calculated through the dynamic equation in
+Eq. (4) to approximate the angular rate xsdre required to
+apply torque for rotating the rigid body in the opposite
+direction as xmtq ¼ xdes  xsdre . These angular velocities
+are then used to calculate the time derivative of the
+measured magnetic ﬁeld in the body frame, as shown in
+Eq. (9) can be expressed as following:
+
+0
+
+A P þ PA  PBR1 BT P þ Q ¼ 0;
+
+
+
+1
+P ¼ Q þ AT P  PB R þ BT PB BT P A:
+T
+
+ð25Þ
+ð26Þ
+
+In this context, Q is a positive-deﬁnite (or positivesemideﬁnite) Hermitian or real symmetric matrix, R is a
+positive-deﬁnite Hermitian or real symmetric matrix, and
+P is determined by solving the Riccati Eqs. 25,26 using
+MATLAB.
+ut ¼ Kxt ¼ R1 BPxt :
+
+ð27Þ
+
+Next, a linear feedback controller is constructed using Eq.
+(27), where K represents the optimal control gain matrix
+
+b_ t  bt  xmtq;t
+
+Fig. 8. Structure of the satellite attitude control system with the SDRE controller.
+5752
+
+ð28Þ
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+where xmtq;t as the time-dependent angular velocities. To
+estimate the magnetic dipole moment required in the opposite direction to reduce the rotation rate, given by Eq. (10),
+k b _
+mb;t ¼ jjb
+bt , the magnetorquers generate this moment by
+t jj
+supplying enough power so that the estimated Eq. (18).
+Then, the time-dependent torque smtq;t from Eq. (19) is
+applied to the system to reduce the system error.
+
+which is limited by the wire size. Following the mission
+requirement, the structural and electrical design of the
+Helmholtz coil should ﬁrst be simple to assemble, wind,
+and bend at the corners. Based on the system architecture
+shown in Fig. 9, as a low-level control software, a DC
+power supply model, TDK-Lambda CUS1500M-48/RF
+with 48 V and 1500 W, was used to control the voltage
+sources. Regarding system cooperation, six high-voltage
+Cytron MD25HV DC motor drives were independently
+used to control the direction and intensity of the magnetic
+ﬁeld for each Helmholtz coil via a PWM signal from a 32bit STM32F439 (NUCLEO-F439ZI model) microcontroller at a speed of 180 MHz sourced by a 5 V lowvoltage power supply model, Delta DRC-5 V 10W1AZ.
+High-level control software via C# programming was used
+to generate the EMF simulation as the command through
+the SGP4-based satellite orbit propagator and then closeloop feedback on the EMF simulation characteristic by a
+Honeywell HMR2300 magneto sensor sourced by a 12 V,
+low-voltage power supply model: CUI-Inc.SMM12-1. In
+summary, the technical speciﬁcations of the HiLs are listed
+in Table 1.
+The three-axis magnetosensor measures EMF simulation along orthogonal axes. However, magnetic interference caused by ferromagnetic elements near the sensor
+can occur at any location on Earth. This interference
+encompasses permanent (hard iron) and induced magnetism (soft iron). The objective of calibration in this study
+is to standardize the sensitivity of the sensor to the magnetic ﬁeld equally in all directions. The processes of eliminating hard iron and soft iron can be determined by
+
+4. Configuration of the hardware-in-the-loop simulation
+platform
+The HiLs methodology oﬀers an intriguing approach for
+testing and validating guidance, navigation, and control
+software algorithms. It enables on-ground testing, allowing
+for exhaustive assessment and veriﬁcation of the software’s
+performance.
+4.1. Three-axis helmholtz cage
+For ACS validation, the three-axis Helmholtz cage is the
+main piece of equipment for generating the EMF simulation based on the Biot-Savart law through a pair of square
+coils that are arranged coaxially and parallel to one
+another. The capability of the proposed three-axis square
+Helmholtz coil can be uniformly formulated as an EMF
+simulation with 1 ± 0.5 G in a 1-m cubic-like area from
+the center. Moreover, the boundary parameters of the
+EMF simulation can be used to approximate the integral
+wind-up in the PID controller and guarantee that the control signal does not exceed the capacity of the actuator,
+
+Fig. 9. System architecture of the proposed HiLs testbed.
+5753
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Table 1
+HiLs testbed subsystem speciﬁcation.
+Subsystems
+
+Model
+
+Parameters
+
+DC Motor Drive
+
+Cytron MD25HV (6 Pcs.)
+
+Micro-controller
+
+NUCLEO-F439ZI (1 Pc.)
+
+Power supply
+
+TDK-Lambda
+CUS1500M-48/RF
+(1 Pc.)
+
+Input Voltage: 7–58 V Max
+output current: 25 A
+Output PWM Freq.: 16 kHz
+Model type: ARM Cortex-M4 32-bit
+Clock Freq.: 180 MHz
+Flash memory: 2 Mbyte
+I/O Ports: 168 I/O
+Output voltage: 48 V
+Output Current: 32 A
+
+Output Power: 1.536 kW
+CUI Inc.
+SMM12-12 (1 Pc.)
+
+Output voltage: 12 V
+Output Current: 1A
+Output Power: 12 W
+Output voltage: 5 V
+Output Current: 1.5 A
+Output Power: 7.5 W
+Range: ±2 Gauss
+Three Axis Digital Output
+Data Interface: RS232
+Sample rate: 10–154 Sam/S
+
+Delta DRC-5 V
+10W1AZ (1 Pc.)
+Magnetic ﬁeld sensor
+
+Honeywell
+HMR2300 (1 Pc.)
+
+rotating the sensor around the Z-axis. Technically, the
+eﬀects of hard iron are stationary and interfere with magnetic interference sources, often originating from metallic
+objects on the circuit board with the magnetometer. Initially, the uniformity of the magnetic ﬁeld is assessed using
+a constant magnetic ﬁeld of 0.75 G along three axes, followed by the collection of experimental results using the
+calibrated magnetic sensor positioned in the center of the
+Helmholtz cage. The raw data from the calibrated magnetic sensor are initially visualized in a 3D surface plot
+(Fig. 10a), and subsequently, the uniformity is veriﬁed
+using an ellipsoid ﬁtting model to transform the generated
+EMF simulation from planar coordinates to spherical
+coordinates following Eq. (29): (Mirzaei et al., 2017)
+Rx ¼ bx cosðsÞcosðaÞ
+Ry ¼ by cosðsÞsinðaÞ
+
+conditions for testing (Chaisakulsurin et al., 2023). Any
+deviation from this uniformity may result in an eccentric
+shape attributed to biases within speciﬁc regions.
+The developed 2.4-m square Helmholtz coils can generate homogeneous EMF simulation along three axes for
+functional testing on the ground with low-cost components. The HiLs can achieve an outcome because they
+can generate EMF simulation under a range of 1 ± 0.5
+G and uniformity within a 1-m cubic-like area from the
+center of the cage, which is initially suitable for applying
+the HiLs for attitude control on the ground for microsatellites in detumbling mode.
+4.2. Magnetorquer model
+Three-axis square air-core magnetorquers have been
+designed, and the relevant characteristic parameters of
+these actuators are detailed in Table 2. To ensure accuracy,
+the magnetic ﬁeld intensity of the magnetorquer is computed using the Biot-Savart law, as shown in Eq. (11),
+and the percentage diﬀerence in the magnetic ﬁeld intensity
+is assessed by comparing the calculated magnetic ﬁeld
+intensity with the measured values using Eq. (12). The variable z ranges from 0 to 120 mm in increments of 10 mm, as
+deﬁned for this particular task, and asq is measured at
+93.5 mm. To validate the calculations, a Group 3 DTM130 digital teslameter with an LPT-130 probe is utilized.
+The magnetorquers are supplied with a power voltage
+ranging from 0 V to 15 V in increments of 0.5 V to measure
+the actual magnetic ﬁeld received (bmea ), as depicted in
+Fig. 11. The validation results of the magnetorquer model
+accuracy are presented in Fig. 12a, which displays a 3D
+surface plot illustrating the relationship between the measured magnetic ﬁeld and the measuring point distance on
+
+ð29Þ
+
+Rz ¼ bz sinðsÞ;
+where Rx ; Ry and Rz are the radii in the x, y, and z directions, respectively, s is the polar angle, and a is the azimuthal angle.
+The results demonstrate that when the position of the
+data is transformed into elliptical coordinates, the radius
+of the spherical shape signiﬁes the intensity of the magnetic
+ﬁeld directed away from the origin to each transformed
+coordinate. A perfectly uniform dataset should manifest
+sphericity, owing to the nearly constant radius of the spherical model, attributed to the homogeneous distribution of
+the magnetic ﬁeld generated by the square Helmholtz coils
+at the center of the cage, as depicted in Fig. 10b. The outcome of our spherical test conﬁrmed the uniformity of the
+magnetic ﬁeld within a 1-m3 volume produced by our
+Helmholtz cage. This ﬁnding aids in the optimal placement
+of the satellite model to achieve consistent EMF simulation
+5754
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 10. Uniformity analysis of the proposed 3D square Helmholtz coil in a 1-m cubic-like area from the center. (a) The original data obtained from the
+calibrated magnetic sensor were visualized in a 3D surface plot, and (b) the radius of the ellipsoid represents the intensity of the magnetic ﬁeld, with each
+transformed coordinate pointing away from the origin.
+Table 2
+Magnetorquer parameters.
+Parameter
+
+Value
+
+Dimensions [mm]
+Number of turns
+AWG22 Copper wire diameter [mm]
+Eﬀective area [m2]
+Resistance
+Maximum magnetic dipole moment @ 0.92 A [Am2]
+Mass [g]
+
+200  200  10
+250
+0.6426
+3.497  102
+9.7
+8.19
+637.8
+
+the z-axis of the magnetorquer model. The magnetic ﬁeld is
+measured across a range of supplied power voltages from
+0 V to 15 V. Additionally, Fig. 12b shows the magnetic
+ﬁeld intensity error of the magnetorquer.
+An analysis of the results reveals that the average percentage diﬀerence in magnetic ﬁeld intensity between the
+calculated and measured values, ranging from 0 to
+120 mm in 10 mm increments, is 1.26%. This indicates a
+high level of accuracy in the magnetic ﬁeld predictions.
+Additionally, the intensity of the measured magnetic ﬁeld
+5755
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+which is equipped with a copper coil (AWG22) and operates at a limited current of 0.92 A, can generate a maximum magnetic moment of 8.19 Am2. This magnetic
+moment is suﬃcient to generate the required torque for
+detumbling the satellite model during HiLs testing.
+To calibrate the magnetorquers, the relationship
+between the generated magnetic moment and the applied
+voltage is determined, as shown in Fig. 13. The results indicate that the measurements exhibit essentially the same linear trend as the theoretical prediction. The diﬀerences are
+proportional to the voltage. Based on these calculations,
+an approximate calibration curve can be derived. The linear approximations of the calibration curves follow the
+form shown in Eq. (30). Subsequently, these equations
+are incorporated into the control algorithm to estimate
+the voltage to be supplied to the magnetorquers for generating the magnetic ﬁeld. In other words, upon receiving the
+magnetic moment command from the B-dot controller in
+Eq. (13), the system provides suﬃcient voltage
+(Vx ; Vy ; Vz ) to each of the magnetorquers for detumbling,
+pointing control, or attitude stabilization during HiLs
+testing.
+
+Fig. 11. Magnetic ﬁeld of the magnetorquer was measured using a
+Group3 DTM-130 digital teslameter with an LPT-130 probe and supplied
+power of 0 V to 15 V.
+
+decreases as the distance from the measuring point
+increases, which is consistent with the theoretical behavior
+of magnetic ﬁelds. Notably, the designed magnetorquer,
+
+Fig. 12. (a) A 3D surface plot relationship between the measured magnetic ﬁeld and (b) the magnetic ﬁeld intensity error of the magnetorquer.
+
+Fig. 13. Linear approximation of the relationship between the generated magnetic moment and the applied voltage.
+5756
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Vx ¼ 1:1379mmea;x  0:043127
+Vy ¼ 1:2179mmea;y  0:035573
+Vz ¼ 1:1176mmea;z  0:047652:
+
+where so represents the external torque due to the gravitational torque, r is the distance from the center of rotation
+to the center of mass, M is the total mass of the testing
+system, g is the acceleration due to gravity, I is the inertia
+tensor of the satellite system model diagð0:7264; 0:7258;
+1:1644Þ, and a is the angular acceleration referenced to
+the coordinate system of the testing system. This reference
+is achieved by installing sensors to measure conditions and
+adjusting masses for balancing the satellite system model
+on air bearings along the three axes (X, Y, and Z), as illustrated in Fig. 14. The motion characteristics after adjusting
+the sliding mass diﬀer because of the position of the center
+of mass. To balance this and bring the center of mass close
+to the center of rotation, the masses are initially adjusted to
+balance the satellite system model. Subsequently, torque is
+applied to the model, and dynamic characteristics data are
+collected. Finally, the position of the center of mass is
+determined through its dynamic characteristics, with relationships deﬁned by the equations of motion in Eq. (31),
+and the distance from the center of rotation to the center
+of mass r is calculated. The results from adjusting the distance of the sliding masses to bring the center of mass closer to the center of rotation by sliding masses are moving
+along the three axes, relocating the center of mass closer
+to the center of rotation (the geometrical center of the
+air-bearing mass). The process is repeated until the threshold limit is reached (0.1 mm), as shown in Table 3. After six
+iterations, the system is balanced with r = (0.025, 0.110,
+0.072), as shown in Fig. 15.
+A block diagram representation of the HiLs platform is
+shown in Fig. 16. In this setup, the control computer
+receives attitude data from sensors, and the magnetic ﬁeld
+command is transmitted to the Helmholtz cage to simulate
+the EMF. Since the magnetometer is placed near the magnetorquers on the satellite model, it is aﬀected by the magnetic ﬁeld disturbance generated by the magnetorquers.
+Therefore, the B-dot algorithm calculates using the command of the constant EMF simulation that are sent to
+the Helmholtz cage, which deﬁnes the magnetic ﬁeld vector
+expressed in the ECI coordinates as bint;t . This cage produces a uniform magnetic ﬁeld within a 1-m3 volume, with
+an error of less than 300 nT in an open environment
+(Chaisakulsurin et al., 2023). The magnetic ﬁeld in the
+body frame bt , in terms of the attitude matrix relative to
+the cage, is calculated using Eq. (8). b_ t at any given time
+is estimated via Eq. (9): Then, the magnetic dipole moment
+in the body frame is calculated via Eq. (10), where the
+applied torque rotates the rigid body in the opposite direction. The suﬃcient voltages Vx;t ; Vy;t , and Vz;t needed at any
+given time by each magnetorquer for detumbling, pointing
+control, or attitude stabilization will be found from:
+
+ð30Þ
+
+4.3. Proposed HiLs platform
+The proposed HiLs platform serves as a simulation environment for the detumbling phase, enabling the validation
+of the attitude control algorithm using a magnetic ﬁeld. It
+utilizes an air-bearing platform that facilitates quasifrictionless rotational motion to simulate dynamics as if the
+system were in space. This simulation involves achieving
+rotational motion free from friction by incorporating air
+bearings and minimizing the impact of gravitational forces.
+The latter is addressed by adjusting the center of mass to
+align with the system’s axis of rotation (Prado et al.,
+2005). In unfortunate circumstances, the center of mass
+of the testing system cannot be obtained directly but needs
+to be calculated. Therefore, the position of the center of
+mass must be measured through its dynamic characteristics, with relationships deﬁned by the equations of motion
+in Eq. (31).
+so ¼ Ia ¼ r  Mg
+
+ð31Þ
+
+Fig. 14. Sliding masses for adjusting to balance the satellite system model.
+
+Table 3
+Distance from the center of mass to the center of rotation, adjusted by the
+sliding masses on the satellite system model to align with the system’s axis
+of rotation.
+Iterations of adjusting
+
+The distance r along the three axes (x, y, z) [mm]
+
+Iteration
+Iteration
+Iteration
+Iteration
+Iteration
+Iteration
+
+(0.188, 0.083, 0.171)
+(-0.015, 0.129, 0.069)
+(-0.360, 0.031, 0.047)
+(-0.037, 0.021, 0.056)
+(0.403, 0.067, 0.115)
+(0.025, 0.110, 0.072)
+
+1
+2
+3
+4
+5
+6
+
+Vx;t ¼ 1:1379mbx;t  0:043127
+Vy;t ¼ 1:2179mby;t  0:035573
+Vz;t ¼ 1:1176mbz;t  0:047652:
+
+5757
+
+ð32Þ
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 15. Number of iterations required to balance the center of mass to the center of rotation of the satellite system model.
+
+Fig. 16. Block diagram of the HiLs platform.
+
+command voltage is modulated to regulate the current.
+Two attitude sensors, namely, the VectorNav VN-100T
+IMU sensor and the Wit-motion HWT101CT crystal gyro
+sensor, are employed for measurement purposes. A 160 Wh
+battery power supply also serves as a voltage source for the
+wireless USB hub and the DC motor drivers. The components of the HiLs platform are depicted in Fig. 17.
+
+The control algorithms implemented in MATLAB are executed, and the resulting driving current data are sent
+through a Raspberry Pi 4, which functions as a wireless
+USB hub, to the Arduino Due control board. Subsequently, the voltage commands from the control board
+are directed to the DC motor drivers responsible for driving the magnetorquers. These magnetorquers generate a
+magnetic ﬁeld that interacts with the EMF simulation produced by the Helmholtz cage, ultimately stabilizing the
+tumbling motion and achieving the desired attitude of the
+satellite model.
+To facilitate current control on the load, the magnetorquers are driven by three L298N DC motor drivers that
+can provide a maximum current of 2 A with a power output of 25 W. Current control is achieved through pulse
+width modulation (PWM), where the duty cycle of the
+
+5. Experimental results
+5.1. Experimental results of detumbling along with pointing
+control
+In this section, the test scenarios are introduced, utilizing HiLs testing to validate the satellite magnetorquerbased ACS for detumbling, along with pointing control.
+5758
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+sented as xint , was set to xint = (0, 0, 0.0698)T rad/s constant on the air-bearing platform.
+In the test scenarios for the cascade PID with the B-dot
+controller, the B-dot controller gains were set to 230, and
+the positive gains of the cascade PID controller, including
+K p;ang and K i;ang Þ for the PI controller and K p;vel and
+K d;vel Þ for the PD controller, were ﬁne-tuned through trial
+and error to achieve the optimal gains for the satellite
+model. For the SDRE controller with the B-dot controller
+tested, the B-dot controller gains were set to 3800, and the
+weighting matrices Q and R had only diagonal terms. All
+the gain parameters in these test scenarios are indicated
+in Table 4.
+The angular rate results of the control algorithms are
+depicted in Fig. 18, with each axis represented in its own
+graph. The angular rates for the x; y, and z axes were successfully brought close to their target values, set at (0, 0,
+0) rad/s, completing the detumbling process in all test
+cases. The achieved performance metrics for this testing
+are as follows: For the cascade PID with the B-dot algorithm, the peak time is 354.13 s, the overshoot is 9.16%,
+and the settling time is within 413.23 s. For the SDRE with
+the B-dot controller result, the performance metrics consist
+of settling times of 368.20 s. There is no overshoot.
+Fig. 19 displays the time response of the pointing control from the initial conditions to the desired attitude
+deﬁned by Euler angles ð/; h; wÞ ¼ ð0; 0; 0Þ deg. The cascade PID with the B-dot controller experimental results
+show that the roll and pitch angles stabilize within 450.00
+s in all test cases. In contrast, the yaw angle exhibits an
+overshoot of 20.92% and reaches a steady state at 0.27
+within 600.75 s. For the SDRE with the B-dot controller,
+the roll and pitch angles stabilize within 300.00 s. In comparison, the yaw angle exhibits no overshoot and reaches a
+steady state at 0.18 within 363.42 s.
+
+Fig. 17. Components of the HiLs platform.
+
+This control algorithm is designed to investigate the capability and eﬀectiveness of the satellite magnetorquer-based
+ACS in ground-based testing. The presented scenarios
+involve control algorithms, employing the cascade PID
+controller and the SDRE controller. The testing includes
+the same initial conditions for each controller. To evaluate
+the detumbling control of the magnetorquers, an initial
+condition for yaw rotational motion is established because
+this platform can rotate around the z-axis by 360 . Additionally, the yaw axis rotation experiences minimal inﬂuence from gravity. The detumbling phase simulation is
+conducted by accelerating the system to achieve a constant
+angular rate, thus generating torque. Subsequently, the
+magnetorquer-based ACS of the satellite model initiates
+the detumbling process. In this experimental setup, the initial EMF simulation from the Helmholtz cage, denoted as
+~
+bemf , were set to ~
+bemf = (0.226, 0.122, 0.453)T G constant,
+while the initial angular rate of the satellite model, repre-
+
+5.2. Experimental results of stabilization after the
+deployment of solar panel wings
+This experimental SDRE controller is validated for stabilizing solar wing deployment on a satellite model. This
+validation proves that this nonlinear optimal control can
+eﬀectively address nonholonomic motion planning after
+solar panel wings are deployed on a free-ﬂoating spacebased body. This test includes three inertia conditions,
+along with a single initial condition for simulating the
+changes in the inertia tensor after solar panel wings are
+deployed, which are as follows:
+
+Table 4
+Gain parameters for detumbling along with pointing control.
+Parameters
+B-dot controller gain, k b
+The cascade PID controller
+The SDRE controller
+
+
+PI controller gain K p;ang ; K i;ang
+
+
+PD controller gain K p;vel ; K d;vel
+The weighting matrices Q
+The weighting matrices R
+Inertial properties, I (kgm2)
+
+Value
+230; 230; 230
+3; 800; 3; 800; 3; 800
+K p;ang ¼ ð16; 16; 16Þ
+K i;ang ¼ ð0:70; 0:80; 0:80Þ
+K p;vel ¼ ð0:13; 0:13; 0:11Þ
+K d;vel ¼ ð0:90; 0:90; 0:70Þ
+diag½0:1; 0:1; 0:1; 1; 1; 1
+diag½0:075; 0:075; 0:075
+diag½0:7264; 0:7258; 1:1644
+
+ Test Case 1 (TC1): Stabilization after solar panel wing
+deployment using inertia ITC1 .
+ Test Case 2 (TC2): Stabilization after solar panel wing
+deployment with a change in inertia to ITC2 .
+ Test Case 3 (TC3): Stabilization after solar panel wing
+deployment with a change in inertia to ITC3 .In this test,
+we simulate changes in the inertia tensor of the satellite
+5759
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 18. Angular rate results of the HiLs test for detumbling along with Pointing Control.
+
+desired decrease in the angular rates along all three directions. The performance metrics include settling times of
+368.20 s, 320.75 s, and 486.14 s for TC1, TC2, and TC3,
+respectively. Fig. 21 depicts the behavior of the Euler
+angles over time for this test scenario. The HiLs are conducted with initial conditions corresponding to the previous test scenario. The experimental results demonstrate
+that the Euler angles converge to the target values, with
+the roll and pitch angles stabilizing within 300.00 s. In comparison, the yaw angle reaches a steady state within 363.42
+s for TC1, 347.2 s for TC2, and 507.28 s for TC3, reaching
+0.18 , 3.24 and 0.98 , respectively.
+
+model at three positions. This simulation aims to mimic
+the eﬀects of deploying solar panel wings, leading to
+unstable rotation. Subsequently, the control algorithm
+is validated for stabilization. The simulation parameters
+and satellite inertial properties for three distinct inertia
+conditions used in the HiLs test for validating the stabilization of solar panel wings after deployment are
+detailed in Table 5.
+The outcomes of the SDRE method for stabilization
+after the deployment of solar panel wings are illustrated
+in Fig. 20 and Fig. 21. For this test scenario, the B-dot controller gains were set to 3800, and the weighting matrices Q
+and R included only diagonal terms, as presented in
+Table 4.
+The time behavior of the angular rates is presented in
+Fig. 20, demonstrating the eﬀectiveness of the stabilization
+after the deployment of solar panel wings in achieving the
+
+5.3. Discussion
+To evaluate the control performance, the step-response
+characteristics for a dynamic satellite model from the HiLs
+in each of the three test cases for each control method are
+5760
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 19. Euler angle results of the HiLs test for detumbling along with Pointing Control.
+
+ The magnetorquer-based ACS can produce eﬀective
+detumbling and stabilization along with pointing control. The elapsed time that is needed to stabilize and
+reduce the angular rate and orient the satellite model
+to the desired attitude is determined. In contrast, the
+air-bearing satellite model maintains rotation along the
+z-axis without the control algorithm, as shown in
+Fig. 22.
+ The pointing accuracy of the magnetorquer-based ACS
+is acceptable for control operations (Starin and Eterno,
+2011), with a steady-state error lower than 5 , as
+shown in Table 6.
+ Fig. 18–19 shows a notable diﬀerence in the settling time
+between the SDRE controller and the cascade PID controller for detumbling along with pointing control, indicating that the SDRE controller is advantageous.
+
+Table 5
+Simulation parameters for the HiLs.
+Parameters
+
+Value
+
+~
+bemf [G]
+xini [rad/s]
+Inertial properties ðIÞ [kgm2]
+
+0:226; 0:122; 0:453
+0; 0; 0:0698
+ITC1 ¼ diag½0:7264; 0:7258; 1:1644
+ITC2 ¼ diag½0:7753; 0:7747; 1:2622
+ITC3 ¼ diag½0:8512; 0:8506; 1:4140
+
+summarized in Table 6. The ﬁrst three rows display the cascade PID control method results, while the lower three
+rows show the SDRE control method results. The time
+behavior of the outputs is measured in seconds. From these
+results, some relevant features of magnetorquer-based
+ACSs inferred from the HiLs are brieﬂy outlined:
+5761
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 20. Angular rate results of the HiLs test for stabilization after the deployment of solar panel wings.
+
+consume more power to stabilize the three axes of the
+satellite model, whereas the SDRE controller consumes
+less. This diﬀerence is observed because cascade PID
+controllers rely on error feedback to adjust the control
+inputs in each axis, while the SDRE controller is
+designed to minimize a quadratic cost function that considers the system’s state and control inputs. This
+approach enables optimal system control by accounting
+for system dynamics and constraints.
+ The evaluation of the stabilization control performance
+after the deployment of solar panel wings in Table 7
+shows that under the same initial conditions for each
+test scenario, there is a notable diﬀerence in settling
+time, giving TC1 and TC2 advantages over TC3. In all
+test cases, TC3 exhibits overshoot peaks in its output,
+while the TC1 and TC2 responses show no overshoot
+peak. The SDRE controller can stabilize and reach the
+
+According to both test results, the cascade PID controller exhibits overshoot peaks in its output, while the
+SDRE controller response shows no overshoot peak.
+This comparison indicates that the cascade PID controller displays more aggressive behavior than the
+SDRE controller. Additionally, ﬁne-tuning all cascade
+PID controllers for eﬃcient responses can be timeconsuming, whereas only two matrices need adjustment
+in the SDRE controller test cases.
+ Fig. 23 displays a comparison of the moving average
+power consumption between the two controllers for
+detumbling along with pointing control. Initially, both
+controllers utilize the maximum power in the magnetorquer of the x- and y-axes to interact with the EMF simulation, reducing the angular velocity along the z-axis to
+achieve detumbling and reach the desired attitude. After
+the settling time, the cascade PID controller continues to
+5762
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 21. Euler angle results of the HiLs test for stabilization after the deployment of solar panel wings.
+
+Table 6
+Yaw angle pointing error.
+
+6. Conclusion
+
+Control Methods
+
+Dwmin
+
+Dwmax
+
+Dwmean
+
+The cascade PID
+The SDRE
+
+0.14
+0.16
+
+1.36
+0.29
+
+1.14
+0.07
+
+The experimental results of this testing have been documented. The B-dot algorithm, in conjunction with the cascade PID and SDRE controllers, successfully detumbles
+the satellite model and aligns it with the desired attitude
+in three test cases, characterizing and verifying the satellite
+magnetorquer-based ACS. These test cases stabilize after
+solar panel wing deployment with a change in inertia.
+Satellite magnetorquer-based ACSs utilizing three-axis
+magnetorquers have undergone development and testing
+via the HiLs for detumbling along with pointing control
+and stabilization after solar panel wing deployment, treating them as problems of nonholonomic motion planning.
+The ﬁrst major task is to successfully stabilize the satellite
+
+desired attitude with settling times of TC1 (363.42 s),
+TC2 (347.20 s), and TC3 (507.28 s), with only slight differences. This result means that the SDRE controller
+can automatically adjust its control gains to accommodate changes in the system’s inertia parameters and
+dynamics, enhancing its robustness in uncertain
+environments.
+5763
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Fig. 22. Angular rate results with and without the controllers.
+
+Fig. 23. Moving average of the power consumption of the two controllers.
+
+5764
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+platform are used to validate the satellite magnetic-based
+ACS on three axes under EMF simulation by tracking
+the path of a LEO satellite in the SGP4 orbit and verifying
+advanced attitude estimation and control strategies using
+modern control approaches such as model predictive control (MPC). These validations enable the control of nonlinear dynamic systems in the satellite model through the
+HiLs on-ground testing platform.
+
+Table 7
+Evaluation of the control performances.
+Control Methods
+The SDRE
+
+TC1
+TC2
+TC3
+
+Overshoot
+
+Settling Time
+
+1.54%
+
+363.42
+347.20
+507.28
+
+by adapting to changes in the inertia tensor. This comprehensive testing comprises a Helmholtz cage, a constant
+EMF simulation in orbit, an air-bearing platform that
+facilitates quasifrictionless rotational motion and a satellite
+system model that balances the center of mass near the center of rotation. Subsequently, the control algorithms
+employing the cascade PID controller and the SDRE controller are veriﬁed. The experimental results conﬁrm the
+crucial testing capability of the magnetorquer-based ACS
+and exhibit a strong correlation with the HiLs results
+across all test cases. The cascade PID controller and the
+SDRE controller eﬀectively executed detumbling control
+and achieved the desired attitude using a three-axis magnetorquer compared to free rotation without the magnetorquer and controller.
+In addition, the experimental results demonstrate that
+three-axis detumbling reduces the angular rate of the satellite model to below 0.0011 rad/s, with a steady-state error
+of less than 2%. Simultaneously, the pointing control strategy enables the achievement of the desired attitude with an
+error of less than 5 . The time required to stabilize,
+reduce the angular rate, and orient the satellite model to
+the desired attitude is 600.75 s for the cascade PID controller and 363.42 s for the SDRE controller. After the settling time, the SDRE controller consumes less power than
+does the cascade PID controller. This diﬀerence arises
+because cascade PID controllers rely on error feedback to
+adjust the control inputs along each axis, whereas the
+SDRE controller is designed to minimize a quadratic cost
+function that accounts for the system’s state and control
+inputs. This approach allows for optimal system control
+by considering system dynamics and constraints. Moreover, SDRE controllers provide good performance when
+addressing satellite dynamic systems, as they can automatically adjust their control gains to accommodate changes in
+the system’s inertia parameters and dynamics from the
+experimental results of stabilization after the deployment
+of solar panel wings, enhancing their robustness in uncertain environments. The SDRE controller is designed to
+minimize a quadratic cost function that accounts for the
+system’s state and control inputs. This approach allows
+for optimal system control by considering system dynamics
+and constraints. This boundary could then be utilized to
+stabilize the operation after solar panel wing deployment,
+ensuring the desired stability performance.
+However, this test only validates the focus of a satellite
+magnetic-based ACS on the z-axis under constant EMF
+simulation conditions. Further applications of the HiLs
+
+Declaration of Competing Interest
+The authors declare that they have no known competing
+ﬁnancial interests or personal relationships that could have
+appeared to inﬂuence the work reported in this paper.
+Acknowledgments
+Special thanks to the National Research Council of
+Thailand for their ﬁnancial support, which facilitated the
+success of our research through the Hub of Talents in
+Spacecraft Scientiﬁc Payload, Grant No. N35E660131,
+and the Hub of Knowledge in Space Technology and its
+Application, Grant No. N35E660132. Moreover, we also
+wish to acknowledge the School of Engineering, Department of Robotics and Artiﬁcial Intelligence, King Mongkut’s Institute of Technology Ladkrabang, and the PBP
+CMU Electron Linac Laboratory (PCELL) at the Plasma
+and Beam Physics Research Facility of Chiang Mai
+University, Thailand. They provided advice and the measuring equipment used to validate the magnetic actuator
+in this experiment.
+References
+Arantes Jr, G., Santana, A., Martins-Filho, L., 2007. Dynamics and
+control of three-axis satellites by thruster actuators using a linear
+quadratic regulator. In Proc. of International Congress of Mechanical
+Science, Brasilia (pp. 1–9).
+
+Aström,
+K.J., & HÄgglund, T., 2006. Pid control. IEEE Control systems
+Magazine, 1066(033X/06).
+Avanzini, G., Giulietti, F., 2012. Magnetic detumbling of a rigid
+spacecraft. J. Guid., Control, Dyn. 35 (4), 1326–1334.
+Bell, G.B., Marino, A.A., 1989. Exposure system for production of
+uniform magnetic ﬁelds. J. Bioelectr. 8 (2), 147–158.
+Cervettini, G., Pastorelli, S., Park, H., et al., 2020. Development and
+experimentation of a cubesat magnetic attitude control system testbed.
+IEEE Trans. Aerosp. Electron. Syst. 57 (2), 1345–1350.
+Chaisakulsurin, J., Manuthasna, S., Masri, T. et al., 2023. Hardware-inthe-loop simulation testbed for three-axis earth’s magnetic ﬁeld
+generation based on 2.4-meter square helmholtz coils. In: 2023
+IEEE/ION Position, Location and Navigation Symposium (PLANS),
+pp. 829–834.
+Chesi, S., Perez, O., Romano, M., 2015. A dynamic, hardware-in-theloop, three-axis simulator of spacecraft attitude maneuvering with
+nanosatellite dimensions. J. Small Satell. 4 (1), 315–328.
+Çimen, T., 2008. State-dependent riccati equation (sdre) control: a survey.
+IFAC Proc. Vol. 41 (2), 3761–3775.
+Corpino, S., Stesina, F., 2014. Veriﬁcation of a cubesat via hardware-inthe-loop simulation. IEEE Trans. Aerosp. Electron. Syst. 50 (4), 2807–
+2818.
+5765
+
+T. Panyalert et al.
+
+Advances in Space Research 74 (2024) 5745–5766
+
+Ge, X.-S., Chen, L.-Q., Yan-Zhu, L., 2007. Optimal control of the
+deployment process of solar wings on spacecraft. Acta Astronaut. 60
+(8–9), 684–690.
+Lewis, F.L., Vrabie, D., Syrmos, V.L., 2012. Optimal Control. John Wiley
+& Sons.
+Li, L., Yang, J., Shi, X. et al., 2014. Robust attitude control for ﬂexible
+satellite during orbit maneuver. In: Proceedings of 2014 IEEE Chinese
+Guidance, Navigation and Control Conference, pp. 2531–2536. IEEE.
+Lin, T.-Y., Juang, J.-C., et al., 2014. Design and veriﬁcation of the
+operating procedure of attitude determination and control subsystem
+of a nanosatellite. In: 2014 CACS International Automatic Control
+Conference (CACS 2014). IEEE, pp. 51–56.
+Lovera, M., Astolﬁ, A., 2004. Spacecraft attitude control using magnetic
+actuators. Automatica 40 (8), 1405–1414.
+Markley, F.L., Crassidis, J.L., 2014. Fundamentals of spacecraft attitude
+determination and control, volume 1286. Springer.
+Mirzaei, M., Hosseini, I., & Babaei, R. (2017). Mems magnetometer
+calibration using modiﬁed ellipsoid ﬁtting method. In 16th international conference of Iranian Aerospace Society.
+Miyata, K., van der Ha, J.C., 2009. Attitude control by magnetic torquer.
+Adv. Astronaut. Sci.
+Morozov, V., Kalenova, V., 2020. Satellite control using magnetic
+moments: controllability and stabilization algorithms. Cosm. Res.
+58, 158–166.
+Ovchinnikov, M.Y., Roldugin, D., Tkachev, S., et al., 2018. B-dot
+algorithm steady-state motion performance. Acta Astronaut. 146, 66–
+72.
+
+Paluszek, M., 2023. ADCS - spacecraft attitude determination and
+control. Elsevier Science, URL: https://books.google.co.th/books?
+id=w4GEEAAAQBAJ.
+Pelton, J.N., Madry, S., 2020. Handbook of Small Satellites: Technology,
+Design, Manufacture, Applications. Springer, Economics and
+Regulation.
+Prado, J., Bisiacchi, G., Reyes, L., et al., 2005. Three-axis air-bearing
+based platform for small satellite attitude determination and control
+simulation. J. Appl. Res. Technol. 3 (3), 222–237.
+Silani, E., Lovera, M., 2005. Magnetic spacecraft attitude control: a
+survey and some new results. Control Eng. Pract. 13 (3), 357–371.
+da Silva, R.C., Borges, R.A., Battistini, S., et al., 2021. A review of
+balancing methods for satellite simulators. Acta Astronaut. 187, 537–
+545.
+da Silva, R.C., Ishioka, I.S.K., Cappelletti, C., et al., 2019. Helmholtz cage
+design and validation for nanosatellites hwil testing. IEEE Trans.
+Aerosp. Electron. Syst. 55 (6), 3050–3061.
+Starin, S.R., Eterno, J., 2011. Attitude determination and control systems.
+Stickler, A.C., 1972. A magnetic control system for attitude acquisition.
+Technical Report.
+Stickler, A.C., Alfriend, K., 1976. Elementary magnetic attitude control
+system. J. Spacecr. Rock. 13 (5), 282–287.
+Wertz, J.R., 2012. Spacecraft attitude determination and control, volume
+73. Springer Science & Business Media.
+Yi, X., Anvar, A., 2013. Small-satellite magnetorquer attitude control
+system modelling and simulation.
+
+5766
+
+

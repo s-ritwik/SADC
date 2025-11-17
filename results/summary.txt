@@ -1,0 +1,14 @@
+CLF–QP Simulation Results
+=========================
+
+Total time simulated: 1000.00 s
+Control frequency: 5.00 Hz
+Horizon length: 20
+Magnetorquer max dipole: 8.19 A·m²
+
+Controllability Indicator (Cov(B_body) eigenvalues):
+[9.99899652e-01 1.55031126e-05 3.34586316e-06]
+
+Observability:
+Gyro + magnetometer ensure nonlinear attitude observability over orbit.
+Time-varying magnetic field excites rotational degrees of freedom.

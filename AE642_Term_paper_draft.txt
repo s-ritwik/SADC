@@ -1,0 +1,829 @@
+LEO Nadir-Pointing Attitude Stabilization via
+CLF–QP with Magnetorquers:
+Modeling, Controllability, and Receding-Horizon
+Synthesis
+Ritwik Shankar
+Dept. of Aerospace Engineering
+Indian Institute of Technology Kanpur
+Email: ritwik@iitk.ac.in
+
+Abstract—I present a control framework for nadir-pointing
+attitude stabilization of a Low Earth Orbit (LEO) small satellite
+using only magnetorquers. The dynamics are formulated in
+quaternion coordinates with rigid-body rotational equations and
+magnetic actuation τ = m × B. A Control Lyapunov Function
+(CLF) combining rotational kinetic energy and attitude error
+yields a convex CLF–QP at each step, enforcing V̇ ≤ −αV
+subject to dipole saturation ∥m∥ ≤ mmax . I extend this to a
+short-horizon MPC that incorporates the known future magneticfield profile along a fixed orbit. Time-varying controllability
+over an orbit is analyzed via a Gramian built from B× (t);
+observability assumptions and reachability limitations under
+saturation are discussed. Robustness is addressed by Gaussian
+process and measurement disturbances; feasibility is ensured via
+a slack variable. The framework is implementable in CasADi
+and supports later comparisons to LQR or discrete-time MPC
+linearizations in a unified state-space form. Planned simulations
+evaluate convergence rate, pointing accuracy, effort, and the
+impact of inclination and saturation.
+
+I. I NTRODUCTION
+The attitude control of Earth–orbiting spacecraft is central
+to maintaining sensor pointing, communication link alignment,
+and stability of platform operations. Modern small satellites,
+particularly nanosatellites and CubeSats, operate under stringent mass, poIr, and volume limitations that preclude the use
+of high–momentum actuators or propellant–based systems.
+Magnetic torque rods, or magnetorquers, which generate a
+magnetic dipole m interacting with Earth’s geomagnetic field
+B to produce torque τ = m × B, therefore remain one of the
+most attractive actuation mechanisms for low–cost missions
+due to their simplicity, reliability, and energy efficiency [?],
+[1], [2].
+Despite these advantages, magnetic actuation is fundamentally underactuated because the torque can only be generated
+perpendicular to the ambient magnetic field direction. Consequently, instantaneous full three–axis control is impossible.
+HoIver, as a spacecraft orbits Earth, the magnetic field vector
+in the body frame varies quasi-periodically, enabling controllability over longer time horizons [3], [4]. This intrinsic timevarying structure has motivated both analytical and numerical
+
+control strategies ranging from linear time-varying (LTV)
+design to nonlinear adaptive schemes.
+Early work on magnetic attitude control employed linearized
+small-angle models and periodic LQR design. Wisniewski [4]
+formulated the LTV equations for a nadir–pointing spacecraft
+in circular orbit and derived periodic gains ensuring asymptotic
+stability of small disturbances. Psiaki [3] later extended this
+framework to an asymptotic periodic LQR, demonstrating
+convergence of angular rates and Euler-angle errors over
+an orbit. While such linear controllers are computationally
+inexpensive, their validity is confined to near-nadir small-angle
+regimes and they cannot explicitly enforce actuator limits.
+Nonlinear control approaches have since broadened the
+theoretical foundation for magnetorquer-only systems. Wang,
+Shtessel, and Wang [5] proposed a backstepping–based twoloop control structure dividing the dynamics into outer and
+inner subsystems in a geomagnetic reference frame. The outer
+loop regulated attitude using a virtual control input governed
+by LaSalle and Floquet stability theory, while the inner loop
+employed sliding-mode control to counter disturbances and
+guarantee asymptotic convergence. Their results verified that
+complete three-axis stabilization is attainable using only magnetic torquers, with distinct control phases for detumbling
+and attitude acquisition. Miyata and Van der Ha [6] further
+developed this idea by designing optimal periodic gains in
+the geomagnetic frame and validating them experimentally for
+small satellites, confirming the practicality of magnetic-only
+actuation in LEO.
+Complementary studies explored Lyapunov–based and passivity–based designs. Silani and Lovera [2] analyzed stability and performance trade-offs of nonlinear feedback laws
+under time-varying B, introducing a global Lyapunov function to study the energy dissipation properties of magnetic
+control. Other authors introduced adaptive and disturbanceobserver–based laws to mitigate model uncertainty and environmental torques [7], [8]. Collectively, these efforts demonstrated that magnetic control can ensure stability and nearnadir alignment, though convergence speed and robustness remain limited by the slowly varying nature of the geomagnetic
+
+vector.
+Recent advances in nonlinear and optimization-based control have opened new perspectives. Model Predictive Control (MPC) enables the inclusion of actuator saturation and
+horizon-based anticipation of the field variation, while maintaining real-time implementability for low-order spacecraft
+models. The Control Lyapunov Function (CLF) framework,
+introduced by Ames et al. for robotic systems [9], provides a
+mathematically rigorous method to embed Lyapunov stability
+conditions directly into a convex Quadratic Program (QP). By
+ensuring the inequality
+Lf V (x) + Lg V (x) m ≤ −αV (x),
+
+(1)
+
+the controller enforces a guaranteed rate of decrease of a
+Lyapunov function V (x) while minimizing control effort subject to physical constraints. The same idea can be extended
+to a receding-horizon (MPC-CLF) formulation, combining
+predictive optimization with provable stability.
+In the context of spacecraft attitude control, the CLF–QP
+paradigm offers several advantages:
+•
+
+•
+
+•
+
+•
+
+It preserves nonlinear quaternion kinematics, avoiding singularities inherent in Euler-angle formulations.
+It handles actuator saturation ∥m∥ ≤ mmax and magnetic
+torque orthogonality constraints explicitly.
+It unifies Lyapunov stability analysis with optimization,
+yielding a convex QP solvable in milliseconds on embedded
+processors using solvers such as OSQP or qpOASES.
+It naturally accommodates noise, disturbances, and timevarying field models through slack variables and robustness
+margins.
+
+This project applies the CLF–QP approach to a Low Earth
+Orbit (LEO) nadir-pointing satellite, using magnetorquers
+as the sole actuators. The orbital path and magnetic field
+profile are assumed known, allowing prediction of B(t) over
+a finite horizon. The dynamics are derived from the rigidbody model presented by De Ruiter, Damaren, and Forbes [1],
+expressed in quaternion form and embedded in a control-affine
+structure. The control objective is formulated as a convex QP
+ensuring the Lyapunov decrease condition (1) while minimizing dipole effort. The design incorporates a receding-horizon
+extension, controllability and reachability analysis following
+the magnetic-field Gramian formulation [2], and robustness
+tests under Gaussian disturbances.
+The remainder of this report is organized as follows.
+Section II formulates the satellite dynamics in quaternion
+representation with magnetic torque modeling and coordinate
+transformations among the inertial, orbital, and body frames.
+Section III introduces the CLF design and QP formulation,
+folloId by the receding-horizon predictive control structure.
+Section IV examines controllability, observability, and reachability conditions for magnetic actuation. Section V presents
+stability and robustness analysis, while Section VI outlines the
+simulation framework and performance metrics. Conclusions
+and directions for future work are given in Section VII.
+
+Contributions
+•
+
+•
+
+•
+
+•
+
+•
+
+•
+
+Full symbolic quaternion dynamics with magnetic actuation
+and body/inertial frame mappings.
+CLF construction and per-step convex QP with optional
+slack for feasibility.
+Receding-horizon formulation that anticipates B(t) along a
+fixed orbit.
+Controllability over an orbit via a B× -based Gramian;
+observability and reachability discussion.
+Robustness to Gaussian disturbances and measurement
+noise; saturation handling.
+State-space linearization pathway for LQR and discrete
+MPC baselines.
+
+II. P ROBLEM S TATEMENT
+Goal: Achieve nadir pointing in LEO with magnetorquers
+only. Denote state x = [ω ⊤ , q ⊤ ]⊤ , where ω ∈ R3 is body⊤
+frame angular velocity and q = [q0 , q⊤
+∈ S3 is the unit
+v]
+quaternion. The desired attitude qd (t) aligns body −z with
+Earth center and x with along-track, i.e., tracks the LVLH
+frame.
+Control input: magnetic dipole m ∈ R3 with bound
+∥m∥ ≤ mmax (or per-axis bounds). Torque is τ = m × B in
+body coordinates.
+Disturbances/noise: additive torque τd ; measurement noise
+on attitude and rate. Both are modeled as Gaussian in simulation.
+Objectives:
+1) Stabilize (q̃, ω) → ((1, 0), 0) where q̃ = qd−1 ⊗ q.
+2) Enforce actuator saturation and minimize control effort.
+3) Provide stability guarantees via CLF and analyze robustness.
+III. S ATELLITE M ODEL
+This section fixes geometry, frames, attitude representations,
+rigid-body dynamics, and the magnetorquer actuator model
+used later for CLF–QP synthesis and MPC prediction. I adopt
+an Earth-centered inertial (ECI) frame {I}, a body-fixed frame
+{B} attached to the spacecraft, and a local-vertical localhorizontal (LVLH) frame {L} for nadir pointing along the
+reference low-Earth orbit; see Figs. 1 and 2.
+A. Geometry and Frames
+Spacecraft description. I follow the characterized microsatellite model: mass m = 17.7 kg, undeployed dimensions
+200 × 200 × 200 mm, three orthogonal magnetorquers aligned
+with the nominal principal axes, and deployable solar wings
+that can alter the inertia tensor (used later only for parametric
+studies) [10].1
+Let CIB ∈ R3×3 be the direction–cosine matrix (DCM)
+mapping inertial vectors to the body frame. For any inertial
+vector vI , vB = CIB vI . I will realize CIB either as a 3–2–1
+Euler DCM or via a quaternion–to–DCM map and reference
+these in (2) and (3).
+1 Exact numerical inertia entries are not required in this section; I denote
+the body inertia by I ∈ R3×3 . See Sec. III-C for usage.
+
+Fig. 1: Characterized satellite model.
+B. Attitude Representations: C321 and Cq
+3–2–1 Euler DCM. With yaw–pitch–roll (ψ, θ, ϕ), the
+3–2–1 DCM is
+
+Fig. 2: ECI {I}, body {B}, and LVLH {L} frames for nadir
+pointing.
+
+
+
+cos θ cos ψ
+cos θ sin ψ
+− sin θ
+C321 (ϕ, θ, ψ) = − cos ϕ sin ψ + sin ϕ sin θ cos ψ cos ϕ cos ψ + sin ϕ sin θ sin ψ sin ϕ cos θ 
+sin ϕ sin ψ + cos ϕ sin θ cos ψ − sin ϕ cos ψ + cos ϕ sin θ sin ψ cos ϕ cos θ
+
+(2)
+Quaternion DCM. For a unit quaternion q = [q0 q1 q2 q3 ]⊤
+(scalar-first), the equivalent DCM is
+ 2
+
+q0 + q12 − q22 − q32 2(q1 q2 + q0 q3 )
+2(q1 q3 − q0 q2 )
+Cq (q) =  2(q1 q2 − q0 q3 ) q02 − q12 + q22 − q32 2(q2 q3 + q0 q1 ) 
+2(q1 q3 + q0 q2 )
+2(q2 q3 − q0 q1 ) q02 − q12 − q22 + q32
+
+(3)
+For geomagnetic computations I use CIB = Cq (q) so the
+Earth magnetic field maps as
+bB (t) = Cq (q(t)) bI (t),
+
+IV. F RAMES AND R EFERENCE ATTITUDES
+
+C. Rigid-Body Attitude Dynamics
+The rotational dynamics in {B} follow Euler’s equation with
+magnetic actuation:
+(5)
+
+where ω ∈ R3 is the body angular rate, τmtq is the magnetorquer torque from (7), and τdist collects environmental and unmodeled torques. The state I simulate later is x = [ q ⊤ ω ⊤ ]⊤
+with ∥q∥ = 1.
+D. Magnetorquer Actuator Model
+Each orthogonal air-core coil produces a dipole
+m = i n S û,
+
+Saturations. Currents satisfy i ∈ [−imax , imax ], giving
+∥m∥ ≤ mmax = nS imax ; thus ∥τmtq ∥ ≤ ∥m∥ ∥bB ∥ by (7).
+Disturbances and sensors. I use white gaussian noise
+as our small sensor noise model, more specifcially I use
+τdist = τenv + wτ , with wτ ∼ N (0, Στ ), a magnetometer
+b̃B = bB + ηb , and a gyro ω̃ = ω + ηω , where ηb ∼ N (0, Σb )
+and ηω ∼ N (0, Σω ). These enter the estimator and robust
+CLF–QP design later.
+
+(4)
+
+which I will reference repeatedly in the control synthesis.
+
+I ω̇ = − ω × (Iω) + τmtq + τdist ,
+
+E. Assumptions, Saturations, and Noises
+
+(6)
+
+with current i, turns n = 250, area S = 3.497 × 10−2 m2 , and
+unit axis û fixed in {B}. The torque law is the magnetic cross
+product
+τmtq = m × bB .
+(7)
+Hardware bounds and a measured calibration imply ∥m∥ ≤
+8.19 A·m2 at i = 0.92 A and coil resistance R = 9.7 Ω; peraxis dipole saturation will be enforced in the controller [?].
+
+I use three frames: inertial ECI {I}, local-vertical localhorizontal (LVLH/RSW) {L}, and body {B}. The orbit is
+maintained by an external controller; I only design attitude.
+Let r, v be the ECI position and velocity. Define the LVLH
+triad
+r
+r×v
+R̂ =
+,
+Ŵ =
+,
+Ŝ = Ŵ × R̂, (8)
+∥r∥
+∥r × v∥
+and the DCM CIL = [R̂ Ŝ Ŵ]⊤ so aL = CIL aI [1].
+a) Nadir/along-track pointing map.: The nadir-pointing
+requirement is −zB ∥ R̂ with xB ∥ Ŝ. A constant body-toLVLH alignment that satisfies this is
+
+
+0 1 0
+B
+CLB =  0 0 −1 ,
+CI,des
+(t) = CLB CIL (t). (9)
+−1 0 0
+B
+The desired quaternion is qd (t) = DCM2Quat(CI,des
+(t)). If a
+mission requires a yaw bias ψy (t) about −R̂, I insert RL (ψy )
+between CLB and CIL .
+b) Future reference quaternions.: The receding-horizon
+controller uses predicted reference attitudes {qd,k }N
+k=0 over
+a horizon N . I can obtain qd,k (i) directly from a supplied
+
+attitude timeline in {I}, or (ii) from a supplied groundtrack/ephemeris by building CIL (tk ) with (8) and then using
+(9). Both are consistent with nadir pointing in LEO [1].
+c) Magnetic-field mapping.: Given BI (t) from an IGRF/dipole model, the body-field used for actuation is
+BB (t) =
+
+CIB (q(t)) BI (t),
+
+τmtq = m × BB .
+
+(10)
+
+Time-variation of BB across an orbit underpins magnetic
+controllability [2], [3].
+V. M ATHEMATICAL M ODELING AND R ECEDING -H ORIZON
+CLF–QP F ORMULATION
+A. States, kinematics, and dynamics
+⊤
+I use the quaternion q = [q0 , q⊤
+v ] (scalar-first) and body
+3
+rate ω ∈ R . The kinematics and rigid-body dynamics are
+
+
+−q1 −q2 −q3
+ q0 −q3 q2 
+ , (11)
+W (q) = 
+q̇ = 21 W (q) ω,
+ q3
+q0 −q1 
+−q2 q1
+q0
+
+I ω̇ = −ω × (Iω) + m × BB + τdist ,
+| {z }
+
+(12)
+
+τmtq
+
+with I the body inertia. Control is the magnetic dipole m ∈ R3
+subject to bounds ∥m∥∞ ≤ mmax (coil limits). The stacked
+state is x = [q ⊤ , ω ⊤ ]⊤ .
+a) Error quaternion and rates.: At sample k, define the
+right-invariant error quaternion
+−1
+q̃k = qd,k
+⊗ qk ,
+
+⊤
+q̃k = [q̃0,k , q̃⊤
+v,k ] ,
+
+(13)
+
+and the body rate error ω̃k = ωk − ωd,k , with ωd,k the
+(optional) desired body rate induced by qd,k . For nadir pointing
+I typically set ωd,k = 0.
+B. Discretization for prediction
+With step ∆t, I use a first-order discrete model suitable for
+QP:
+xk+1 = fd (xk , mk )
+"
+
+#
+qk + ∆t
+2 W (qk ) ωk
+
+
+=
+,
+ωk + ∆t I −1 − ωk × (Iωk ) + mk × BB,k
+(14)
+
+followed by quaternion renormalization qk+1
+←
+qk+1 /∥qk+1 ∥. For a convex QP I include the state trajectory
+{xk } as decision variables and enforce (14) as linearized
+equality constraints about a nominal (x̄k , m̄k ):
+
+
+04×3
+xk+1 ≈ Ak xk + Bk mk + ck , Bk = ∆t −1
+,
+I [BB,k ]×
+(15)
+where [·]× is the skew map and Ak , ck come from Jacobians
+of (14). This keeps the program quadratic and convex.
+
+C. Control Lyapunov Function and decay condition
+I adopt the CLF
+V (xk ) =
+
+1
+2
+
+ωk⊤ I ωk +
+
+κ
+2
+
+∥q̃v,k ∥2 ,
+
+κ > 0,
+
+(16)
+
+whose continuous-time derivative (nominal, without disturbances) is
+V̇ = (BB × ω)⊤ m +
+
+κ q̃0
+2
+
+q̃⊤
+v ω.
+
+(17)
+
+The CLF decay inequality
+(BB,k ×ωk )⊤ mk ≤ −αV (xk ) −
+
+κ q̃0,k
+2
+
+q̃⊤
+v,k ωk + δk , (18)
+
+with α > 0 and slack δk ≥ 0, is affine in mk and therefore
+QP-compatible [9]. I penalize δk heavily to preserve feasibility
+under adverse B alignments.
+a)
+V̇ .: Using (12) and q̃˙ v = 12 q̃0 I3 +
+ Computing
+1
+[q̃v ]× ω− 2 q̃0 I3 +[q̃v ]× ωd (with ωd = 0 here), the nominal
+derivative is
+
+
+˙
+V̇ = ω ⊤ − ω × (Iω) + m × BB + κ q̃⊤
+v q̃v
+= (BB × ω)⊤ m +
+
+κ q̃0
+2
+
+q̃⊤
+v ω.
+
+(19)
+
+The gyroscopic power term ω ⊤ − ω × (Iω) = 0 by skewsymmetry. The first term in (19) is the control channel Lg V
+(bilinear in m via BB ×ω); the second is the natural kinematic
+coupling Lf V from attitude error to rate.
+b) Why enforce V̇ ≤ −αV .: If V̇ ≤ −αV with α > 0,
+then V (t) ≤ e−αt V (0): the energy-like measure V decays
+exponentially, which implies q̃v → 0 and ω → 0 (global
+except for the quaternion sign ambiguity) [9]. This gives
+a formal stability guarantee under actuator limits when the
+inequality is enforced by the controller rather than assumed
+in analysis. In practice the magnetic channel may be weak or
+momentarily unaligned (e.g., BB nearly collinear with ω), so
+I introduce a nonnegative slack δ to maintain feasibility; then
+V̇ ≤ −αV + δ yields the bound
+V (t) ≤ e−αt V (0) +
+
+1−e−αt
+α
+
+δ̄,
+
+i.e., practical exponential stability to a ball set by the worstcase slack δ̄. Penalizing δ in the cost shrinks this ball.
+c) Affine decay constraint used in the QP.: Discretizing
+(19) stage-wise and upper-bounding V̇ by its sample value
+gives the convex, control-affine inequality
+(BB,k ×ωk )⊤ mk ≤ −αV (xk ) −
+
+κ q̃0,k
+2
+
+q̃⊤
+v,k ωk + δk , (20)
+
+where every term is known at sample k except mk and the
+slack δk ≥ 0.
+⊤
+• (BB,k × ωk ) mk is the controllable decrease rate; it
+vanishes if mk ∥ BB,k and is maximized when mk aligns
+with BB,k × ωk .
+• −αV (xk ) sets the desired contraction rate; larger α yields
+faster convergence but requires larger dipoles and may be
+infeasible under saturation.
+κ q̃0,k ⊤
+• − 2
+q̃v,k ωk compensates the uncontrolled kinematic
+power injection.
+
+•
+
+δk prevents infeasibility (e.g., ∥BB,k ∥ small) and is
+quadratically penalized.
+
+This is the standard CLF–QP construction specialized to
+magnetic actuation [9], [1], [2].
+D. Receding-horizon CLF–QP
+−1
+I stack decision variables z = { xk , mk , δk }N
+k=0 ∪ {xN }
+and solve
+
+min
+z
+
+N
+−1 
+X
+
+2
+1
+2 ∥mk ∥
+
++ ρ δk2
+
+
+
++ λ V (xN ) +
+
+N
+X
+
+1
+2
+
+x⊤
+k Qxk
+
+G. Magnetorquer Hardware Used
+I adopt a three–axis, square, air–core magnetorquer set
+whose parameters were experimentally characterized and validated using Biot–Savart modeling and bench measurements
+with a Group3 DTM-130 teslameter (0–15 V sweep) completely inspired by the work of T. Panyalert et al [10]. The
+authors report an average magnetic-field intensity error of
+≈1.26% across 0–120 mm, confirming model–measurement
+agreement suitable for control design
+a) Actuation principle.: Control torque is generated by
+the magnetic cross product
+
+k=0
+
+k=0
+
+τmtq = m × B,
+
+(21)
+s.t.
+
+(26)
+
+where m is the coil dipole moment and B is the geomagnetic
+field expressed in the same frame.
++ δk ,
+(BB,k × ωk )⊤ mk ≤ −αV (xk ) −
+b) Implemented hardware parameters.: The key coil
+(23)
+specifications used in our simulations are taken from the
+− mmax ≤ (mk )i ≤ mmax , i = 1, 2, 3, k = 0:N − 1, characterization study’s [10] Table 2 (single-axis values; three
+(24) orthogonal coils provide full 3-axis actuation) and are preδk ≥ 0, k = 0:N − 1.
+(25) sented in Table I.
+
+xk+1 = Ak xk + Bk mk + ck ,
+
+k = 0:N − 1,
+
+(22)
+
+κq̃0,k ⊤
+2 q̃v,k ωk
+
+Here Q ⪰ 0 regularizes the state, λ ≥ 0 imposes a terminal
+CLF weight, and ρ ≫ 1 penalizes CLF violations. The equality constraints (22) are from (15). Constraint (23) enforces
+Lyapunov decrease stage-wise, guaranteeing stability while
+respecting actuation limits (24). I apply only m⋆0 , shift the
+horizon, update qd and BB , and resolve.
+a) Variant: single-step CLF–QP (feedback).: For N = 1
+and Q = λ = 0, (21)–(25) reduce to the per-step CLF–QP
+min 1 ∥m∥2 +ρδ 2
+m,δ≥0 2
+
+s.t. (BB ×ω)⊤ m ≤ −αV − κq̃20 q̃⊤
+v ω +δ,
+
+which I use as a fallback when computation is tight.
+E. Notes on frames inside the optimization
+All field terms are built from (10). The reference qd,k is
+formed by (9) from ephemerides (or taken directly if provided
+in {I}). Error states (13) enter the CLF (16). Dynamics use
+body-frame ω and torques (12); the input map in the linearization has the analytic form Bk in (15). This separation keeps
+the QP convex while preserving the multi-frame geometry
+emphasized in this course [1], [2], [3], [9].
+F. Saturation, disturbances, and noise
+I enforce per-axis dipole bounds via (24). Disturbance
+torques are injected in (12) during simulation; the slack δk
+provides robustness to modeling errors and B nulls. Sensor
+noise enters through the estimator that supplies (qk , ωk ); the
+QP uses those estimates directly.
+Outcome. The formulation (21)–(25) generates a sequence of
+dipoles that steers the spacecraft from its current attitude to the
+desired nadir-pointing attitude over a receding horizon, while
+guaranteeing Lyapunov decrease and respecting magnetic actuation constraints.
+
+TABLE I: Magnetorquer parameters adopted from the characterization study.
+Quantity
+Geometry (square coil)
+Turns
+Wire
+Effective area
+Resistance
+Max current (tested)
+Max dipole @ 0.92 A
+Mass
+Calibration method
+
+Value
+200 × 200 × 10 mm
+250
+AWG22 Cu, diameter 0.6426 mm
+3.497 × 10−2 m2
+9.7 Ω
+0.92 A (supply limited)
+8.19 A m2
+637.8 g
+Linear m vs. applied voltage from benchtop tests
+
+These values enter the control map through (26) once B is rotated into the body frame via the chosen attitude parametrization (see Sec. III-B) and after applying per–axis current limits
+to model saturation in the QP. Validation details and the
+measurement setup are as reported in the source study.
+VI. C ONTROL A RCHITECTURE , S YNTHESIS , AND
+A NALYSIS
+This section fixes the complete control pipeline for nadirpointing with magnetorquers using a receding-horizon CLF–
+QP, provides a block diagram, and analyzes controllability,
+observability, and stability. I use the modeling from Secs. III–
+V (notably (15), (20), (21)–(25)). Hardware limits follow the
+characterized magnetorquer in [10]; attitude/frames and rigidbody dynamics follow [1]; magnetic-control properties follow
+[2]; the CLF–QP construction follows [9].
+a) It is to be again duly noted that a known limitation
+of magnetorquers are their inability to actuate in a direction
+parallel to earth’s magnetic field due to θ (angle between
+magnetic field and magnetorquer coil) being Zero, making the
+system underactuated. However, this is not a dead-end, we can
+still take control of the satellite in all directions by exploiting
+the time-varying orbit geometry to eventually gain control in
+all axes.:
+
+A. Signal definitions and pipeline
+
+D. Observability and estimation
+
+At sample k:
+1)
+2)
+3)
+4)
+5)
+6)
+7)
+
+{qd,k }N
+k=0
+
+Build the horizon
+from LVLH/ECI (Sec. IV).
+Estimate (q̂k , ω̂k ) from ω̃, b̃B (MEKF).
+Compute BB,k = C(q̂k )BI (tk ).
+Linearize to obtain Ak , Bk , ck as in (15).
+Form the CLF inequality (20) using q̃k , ω̃k .
+Solve (21)–(25) for m⋆0 ; map to currents and saturate.
+Step the plant; shift the horizon; repeat.
+
+B. Transfer-function considerations
+The plant is nonlinear and time-varying because BB (t) =
+C(q)BI (t) depends on attitude and the orbit. A single SISO
+transfer function is therefore not appropriate. A small-angle
+linearization about a fixed BB yields
+θ = ω,
+
+ω = −I
+
+−1
+
+Measurements are
+
+ 
+ 
+
+ω̃k
+ωk
+ηω,k
+yk =
+=
++
+.
+C(qk )bI (tk )
+ηb,k
+b̃B,k
+A single magnetic vector does not determine attitude instantaneously, but along an orbit bI (t) and hence bB (t) vary in direction. With gyro kinematics, the time-varying pair (Ak , Ck )
+becomes observable over typical LEO windows (persistently
+exciting). I therefore use a MEKF to provide (q̂, ω̂) to the
+controller [1]. Bias states can be included if required.
+E. Stability analysis (CLF–QP closed loop)
+With
+V (x) =
+
+1
+2
+
+ω ⊤ Iω + κ2 ∥q̃v ∥2 ,
+
+[BB ]× m,
+the per-stage inequality (20)
+
+which is a double-integrator with direction-dependent input
+matrix. This is useful only for sanity checks. I therefore do
+not incorporate classical transfer functions in the synthesis; for
+I do not have the required knowledge of how to incoperate
+such a SISO system with and imply Lyuapunov guarentees to
+it. All design uses the CLF-QP with the time-varying magnetic
+channel [1], [2].
+C. Controllability and reachability
+Instantaneously,
+τmtq = m × BB = −[BB ]× m,
+
+rank([BB ]× ) = 2 (BB ̸= 0),
+
+so torque is confined to the plane orthogonal to BB and the
+instantaneous input matrix G(t) = I −1 (−[BB (t)]× ) has rank
+2. Over an orbit, BB (t) varies in direction; for the linearized
+time-varying system
+
+
+0
+xk+1 = Ak xk + Bk mk , Bk =
+∆t,
+−I −1 [BB,k ]×
+the controllability Gramian
+Z
+
+t1
+
+W (t0 , t1 ) =
+
+Φ(t1 , τ )B(τ )B(τ )⊤ Φ(t1 , τ )⊤ dτ
+
+t0
+
+is full rank when BB (τ ) spans three independent directions
+on [t0 , t1 ]. Thus, magnetorquer-only control is effectively 3axis controllable in a time-varying sense for generic LEO,
+provided the prediction window covers sufficient field rotation
+[2]. Feasibility under saturation: ∥τ ∥max ≤ ∥m∥max ∥BB ∥.
+With the characterized coil (200×200×10 mm, n = 250, S =
+3.497 × 10−2 m2 , imax ≈ 0.92 A ⇒ mmax ≈ 8.19 A m2 ) and
+typical LEO ∥B∥ ∼ 20–60 µT, peak torques are O(10−4 ) N m
+[10]. I choose N, α, κ, Q, λ so the demanded contraction in
+(20) is compatible with these limits.
+
+(BB ×ω)⊤ m ≤ −αV −
+
+κq̃0 ⊤
+2 q̃v ω
+
++δ
+
+is affine in m and enforces an upper bound on V̇ . If δ = 0,
+V̇ ≤ −αV gives exponential decay V (t) ≤ e−αt V (0). With
+δ ≥ 0 and a quadratic penalty in (21), the closed loop is practically exponentially stable to a ball whose radius scales with
+the worst-case slack (and with bounded disturbances/noises
+acts as an ISS-type bound). Embedding this inequality at each
+horizon stage preserves convexity and yields the recedinghorizon CLF–QP used here [9]. In implementation I monitor
+δk⋆ (Fig. VI-0a) as a certificate of feasibility margin.
+F. Implementation notes for evaluation
+I explicitly log ∥m∥∞ , ∥i∥∞ , δk⋆ , and the angle-to-nadir
+error. I also plot the direction of BB (t) across each horizon to
+support the controllability discussion and include disturbance
+and sensor-noise sweeps to report robustness.
+A PPENDIX : S TATE -S PACE FOR LQR/MPC BASELINES
+Linearize about (q̃, ω) = (0, 0) and nominal Bb (t) to obtain
+δ ẋ = A(t) δx + B(t) δm,
+with periodic A, B. Design TVLQR or discrete-time MPC
+with input bounds; compare against CLF–QP in identical
+scenarios.
+A PPENDIX : A SSUMPTIONS AND PARAMETERS
+Assume: principal axes alignment, bounded ∥τd ∥, known
+orbit and qd (t), estimator provides (q, ω) at ≥ 10 Hz, and
+B from IGRF/dipole model. Typical mmax = 0.2 A m2 ; tune
+(κ, α, p, λ) empirically.
+
+R EFERENCES
+[1] T. J. D. Ruiter, C. J. Damaren, and J. R. Forbes, Spacecraft Dynamics
+and Control: An Introduction. Chichester: John Wiley & Sons, 2013.
+[2] S. Silani and M. Lovera, “Magnetic spacecraft attitude control: A survey
+and some new results,” Control Engineering Practice, vol. 13, no. 3, pp.
+357–371, 2005.
+[3] M. L. Psiaki, “Magnetic torquer attitude control via asymptotic periodic
+lqr,” Journal of Guidance, Control, and Dynamics, vol. 24, no. 2, pp.
+386–394, 2001.
+[4] R. Wisniewski, “Linear time-varying approach to satellite attitude
+control using magnetic torquers,” Journal of Guidance, Control, and
+Dynamics, vol. 22, no. 6, pp. 849–857, 1999.
+[5] P. Wang, Y. Shtessel, and Y. Wang, “Satellite attitude control using only
+magnetorquers,” in IEEE Aerospace Conference, 1998.
+[6] T. Miyata and J. van der Ha, “Attitude control by magnetic torquer for
+small satellite,” in AAS/AIAA Space Flight Mechanics Meeting, no. AAS
+09-169. American Astronautical Society, 2009.
+[7] M. J. Sidi, Spacecraft Dynamics and Control: A Practical Engineering
+Approach. Cambridge University Press, 1997.
+[8] P. C. Hughes, Spacecraft Attitude Dynamics. Mineola, NY: Dover
+Publications, 2004, unabridged republication of the 1986 Wiley edition.
+[9] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier
+function based quadratic programs for safety critical systems,” IEEE
+Transactions on Automatic Control, vol. 62, no. 8, pp. 3861–3876, 2017.
+[10] T. Panyalert, S. Manuthasna, J. Chaisakulsurin, T. Masri, K. Palee,
+P. Prasit, P. Torteeka, and P. Konghuayrob, “Characterization
+and verification of the optimal feedback gain of a satellite
+magnetorquer-based attitude control system,” Advances in Space
+Research, vol. 74, no. 11, pp. 5745–5766, 2024. [Online]. Available:
+https://www.sciencedirect.com/science/article/pii/S0273117724008664
+
+
