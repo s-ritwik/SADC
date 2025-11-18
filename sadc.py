@@ -13,6 +13,61 @@ import numpy as np
 import casadi as ca
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from dataclasses import dataclass
+from typing import Optional
+import os
+
+
+@dataclass
+class HyperParams:
+    """All tunable knobs for the CLF–QP MPC and simulation."""
+    dt: float = 0.2
+    horizon_steps: int = 40           # 8 s horizon
+    # Simulated time window [s]; set long enough
+    # to see significant variation of B_body over the orbit
+    total_time: float = 5400        # one full 90-minute is one orbit revolution
+    theta0: float = 0.0
+    initial_attitude_offset_deg: float = 10.0
+    magnetorquer_limit: float = 81.9   # 10x larger dipole limit
+    control_weight_diag: tuple = (1e-4, 1e-4, 1e-4)
+    slack_weight: float = 1e5        # CLF slack cost
+    terminal_weight: float = 20.0
+    kappa: float = 2.0               # CLF attitude weight
+    alpha: float = 0.1               # CLF decay rate (per second)
+    state_q_weight: float = 1e5      # strongly prioritize attitude error
+    state_w_weight: float = 10.0     # de-emphasize rate tracking
+    rw_max_torque: float = 5e-5      # reaction wheel max torque about body Y [N·m]
+    rw_weight: float = 1.0           # cost weight for reaction wheel torque
+    enable_clf: bool = True          # enable CLF constraints/penalties
+    solver_tol: float = 1e-6
+    solver_max_iter: int = 200
+    disturbance_std: float = 1e-5
+    # Orbit-tracking reference options
+    reference_rate_scale: float = 1.0
+    ref_enable_dither: bool = True
+    ref_dither_harmonic: float = 3.0
+    ref_roll_deg: float = 6.0
+    ref_pitch_deg: float = 4.0
+    ref_yaw_deg: float = 0.0
+    ref_pitch_phase_deg: float = 90.0
+    ref_yaw_phase_deg: float = 180.0
+    # Optional sinusoidal reference for validation
+    use_sinusoidal_reference: bool = False
+    sin_ref_amp_deg: tuple = (10.0, 0.0, 5.0)  # (roll,pitch,yaw) amplitudes
+    sin_ref_omega: float = 0.005               # [rad/s] sinusoid frequency
+    # MPC visualization options
+    mpc_snapshot_window: float = 20.0          # [s] history window before snapshot
+    # mpc_snapshot_count <= 0  => snapshot at every step (full MPC video)
+    # mpc_snapshot_count > 0   => that many snapshots spread across the run
+    mpc_snapshot_count: int = 0
+    animation_interval_ms: int = 50
+    results_dir: str = "results"
+    rng_seed: Optional[int] = None
+
+
+HP = HyperParams()
+if HP.rng_seed is not None:
+    np.random.seed(HP.rng_seed)
 
 # =========================
 #  Utility: Quaternion math
@@ -91,25 +146,58 @@ def dcm_to_quat(R):
     return q
 
 
+def rot_x(angle):
+    c, s = np.cos(angle), np.sin(angle)
+    return np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, c, -s],
+        [0.0, s, c]
+    ])
+
+
+def rot_y(angle):
+    c, s = np.cos(angle), np.sin(angle)
+    return np.array([
+        [c, 0.0, s],
+        [0.0, 1.0, 0.0],
+        [-s, 0.0, c]
+    ])
+
+
+def rot_z(angle):
+    c, s = np.cos(angle), np.sin(angle)
+    return np.array([
+        [c, -s, 0.0],
+        [s, c, 0.0],
+        [0.0, 0.0, 1.0]
+    ])
+
+
 # =========================
 #  Satellite & Environment
 # =========================
 
 # Inertia matrix (kg·m^2) from characterization (ITC1)
-Ixx, Iyy, Izz = 0.7264, 0.7258, 1.1644
+Ixx, Iyy, Izz = 0.07264, 0.07258, 0.11644  # reduced by factor 10
 I_cas = ca.diag(ca.vertcat(Ixx, Iyy, Izz))
 I_num = np.diag([Ixx, Iyy, Izz])
 I_inv_num = np.linalg.inv(I_num)
 
-# Magnetorquer limits (Panyalert et al.)
-m_max = 8.19  # [A·m^2]
+# Magnetorquer limits (Panyalert et al.), scaled up for stronger actuation
+m_max = HP.magnetorquer_limit  # [A·m^2]
+tau_rw_max = HP.rw_max_torque  # [N·m] reaction wheel about body Y
+R_rw = HP.rw_weight
 # Control & CLF weights
-R_c = ca.diag(ca.vertcat(1e-3, 1e-3, 1e-3))
-W_s = 1e5
-kappa = 2.0   # CLF attitude weight
-alpha = 0.5   # CLF decay rate
-dt = 0.2      # control step [s] (5 Hz)
-N_horizon = 20  # horizon steps (4 seconds)
+R_c = ca.diag(ca.vertcat(*HP.control_weight_diag))
+W_s = HP.slack_weight
+kappa = HP.kappa   # CLF attitude weight
+alpha = HP.alpha   # CLF decay rate
+Q_w = HP.state_w_weight * ca.DM.eye(3)
+Q_q = HP.state_q_weight * ca.DM.eye(3)
+dt = HP.dt         # control step
+N_horizon = HP.horizon_steps  # horizon steps
+HORIZON_TIME = dt * N_horizon
+terminal_weight = HP.terminal_weight
 
 # Orbit and Earth magnetic model (very simple dipole)
 R_earth = 6371000.0   # [m]
@@ -142,9 +230,9 @@ def earth_B_inertial(r_I):
 
 def reference_attitude(theta):
     """
-    Nadir-pointing LVLH-like reference for equatorial orbit angle theta.
-    - z_B points to nadir (-r_hat)
-    - x_B points along velocity direction (tangential)
+    LVLH-like reference for equatorial orbit angle theta.
+    - x_B points to nadir (-r_hat)  [dominant payload axis]
+    - z_B points along velocity direction (tangential)
     - y_B completes right-handed triad
     Returns (q_ref, w_ref_body)
     """
@@ -155,23 +243,79 @@ def reference_attitude(theta):
     r_hat = r_I / np.linalg.norm(r_I)
     v_hat = v_I / np.linalg.norm(v_I)
 
-    z_B = -r_hat         # body z axis to nadir
-    x_B = v_hat          # body x axis along-track
+    x_B = -r_hat         # body x axis to nadir (dominant)
+    z_B = v_hat          # body z axis along-track
     y_B = np.cross(z_B, x_B)
     y_B = y_B / np.linalg.norm(y_B)
 
     # Re-orthogonalize if needed
-    x_B = np.cross(y_B, z_B)
-    x_B = x_B / np.linalg.norm(x_B)
+    z_B = np.cross(x_B, y_B)
+    z_B = z_B / np.linalg.norm(z_B)
 
     # Rotation matrix from body to inertial: columns are body axes in inertial coords
     R_IB = np.column_stack((x_B, y_B, z_B))
-    q_ref = dcm_to_quat(R_IB)
 
     # Reference body angular velocity: roughly orbit rate about y_B
-    w_ref_body = np.array([0.0, omega_orbit, 0.0])
+    w_ref_body = np.array([0.0, omega_orbit * HP.reference_rate_scale, 0.0])
 
+    if HP.ref_enable_dither:
+        R_IB, w_ref_body = apply_reference_dither(R_IB, theta, w_ref_body)
+
+    q_ref = dcm_to_quat(R_IB)
     return q_ref, w_ref_body, r_I
+
+
+def sinusoid_reference(t):
+    """
+    Simple body-fixed sinusoidal reference for validation.
+    Euler angles (roll, pitch, yaw) follow sin(ω t) with configurable amplitudes.
+    Returns (q_ref, w_ref_body).
+    """
+    if not HP.use_sinusoidal_reference:
+        raise RuntimeError("sinusoid_reference called but use_sinusoidal_reference=False")
+    amp_roll_deg, amp_pitch_deg, amp_yaw_deg = HP.sin_ref_amp_deg
+    w = HP.sin_ref_omega
+    roll = np.deg2rad(amp_roll_deg) * np.sin(w * t)
+    pitch = np.deg2rad(amp_pitch_deg) * np.sin(w * t)
+    yaw = np.deg2rad(amp_yaw_deg) * np.sin(w * t)
+    R_extra = rot_z(yaw) @ rot_y(pitch) @ rot_x(roll)
+    q_ref = dcm_to_quat(R_extra)
+    # Approximate body rates from derivative of Euler angles (small-angle assumption)
+    roll_rate = np.deg2rad(amp_roll_deg) * w * np.cos(w * t)
+    pitch_rate = np.deg2rad(amp_pitch_deg) * w * np.cos(w * t)
+    yaw_rate = np.deg2rad(amp_yaw_deg) * w * np.cos(w * t)
+    w_ref_body = np.array([roll_rate, pitch_rate, yaw_rate])
+    return q_ref, w_ref_body
+
+
+def apply_reference_dither(R_IB, theta, base_w):
+    """
+    Inject small roll/pitch/yaw dithers so the reference trajectory remains dynamic.
+    """
+    harmonic = max(HP.ref_dither_harmonic, 0.0)
+    if harmonic == 0.0:
+        return R_IB, base_w
+
+    roll_amp = np.deg2rad(HP.ref_roll_deg)
+    pitch_amp = np.deg2rad(HP.ref_pitch_deg)
+    yaw_amp = np.deg2rad(HP.ref_yaw_deg)
+    pitch_phase = np.deg2rad(HP.ref_pitch_phase_deg)
+    yaw_phase = np.deg2rad(HP.ref_yaw_phase_deg)
+
+    roll_cmd = roll_amp * np.sin(harmonic * theta)
+    pitch_cmd = pitch_amp * np.sin(harmonic * theta + pitch_phase)
+    yaw_cmd = yaw_amp * np.sin(harmonic * theta + yaw_phase)
+
+    R_extra = rot_z(yaw_cmd) @ rot_y(pitch_cmd) @ rot_x(roll_cmd)
+    R_IB_new = R_IB @ R_extra
+
+    theta_dot = omega_orbit
+    roll_rate = roll_amp * harmonic * theta_dot * np.cos(harmonic * theta)
+    pitch_rate = pitch_amp * harmonic * theta_dot * np.cos(harmonic * theta + pitch_phase)
+    yaw_rate = yaw_amp * harmonic * theta_dot * np.cos(harmonic * theta + yaw_phase)
+
+    w_ref_body = base_w + np.array([roll_rate, pitch_rate, yaw_rate])
+    return R_IB_new, w_ref_body
 
 
 # =========================
@@ -183,9 +327,10 @@ def build_clf_qp_mpc():
     Build a receding-horizon CLF–QP MPC problem in CasADi Opti.
 
     Decision variables:
-      X[:,0..N]  - state trajectory (q0,q1,q2,q3,wx,wy,wz)
-      U[:,0..N-1]- magnetic dipole sequence
-      Delta[0..N-1] - CLF slack sequence
+      X[:,0..N]     - state trajectory (q0,q1,q2,q3,wx,wy,wz)
+      U[0:3,0..N-1] - magnetorquer dipole sequence m = [m_x,m_y,m_z]
+      U[3,0..N-1]   - reaction wheel torque about body Y (tau_rw)
+      Delta[0..N-1] - CLF slack sequence (optional)
 
     Parameters:
       X0         - initial state
@@ -197,7 +342,8 @@ def build_clf_qp_mpc():
 
     # Decision variables
     X = opti.variable(7, N_horizon+1)
-    U = opti.variable(3, N_horizon)
+    # U = [m_x, m_y, m_z, tau_rw_y]
+    U = opti.variable(4, N_horizon)
     Delta = opti.variable(1, N_horizon)
 
     # Parameters
@@ -209,12 +355,13 @@ def build_clf_qp_mpc():
     # Initial condition
     opti.subject_to(X[:, 0] == X0)
 
-    # Build dynamics and CLF constraints over horizon
+    # Build dynamics and optional CLF constraints over horizon
     for k in range(N_horizon):
         xk = X[:, k]
         qk = xk[0:4]
         wk = xk[4:7]
-        mk = U[:, k]
+        m_k = U[0:3, k]
+        tau_rw_k = U[3, k]
 
         # Discrete dynamics (Euler) with renormalization
         wx, wy, wz = wk[0], wk[1], wk[2]
@@ -225,8 +372,11 @@ def build_clf_qp_mpc():
             ca.horzcat(wz,  wy, -wx,  0)
         )
         q_dot = 0.5 * Omega @ qk
-        tau_mag = ca.cross(mk, B_body)
-        w_dot = ca.solve(I_cas, (tau_mag - ca.cross(wk, I_cas @ wk)))
+        # Hybrid actuation: magnetorquer torque + reaction wheel torque about Y
+        tau_mag = ca.cross(m_k, B_body)
+        tau_rw_vec = ca.vertcat(0, tau_rw_k, 0)
+        tau_total = tau_mag + tau_rw_vec
+        w_dot = ca.solve(I_cas, (tau_total - ca.cross(wk, I_cas @ wk)))
         q_next = qk + dt * q_dot
         # normalize quaternion
         q_next = q_next / ca.norm_2(q_next)
@@ -235,54 +385,75 @@ def build_clf_qp_mpc():
 
         opti.subject_to(X[:, k+1] == x_next)
 
-        # CLF at step k
-        q_ref_k = Q_ref_seq[:, k]
-        w_ref_k = W_ref_seq[:, k]
+        if HP.enable_clf and alpha > 0.0:
+            # CLF at step k (discrete-time decrease)
+            q_ref_k = Q_ref_seq[:, k]
+            w_ref_k = W_ref_seq[:, k]
 
-        # Error quaternion: q_tilde = q_ref^{-1} ⊗ q
-        q_ref_conj = quat_conj(q_ref_k)
-        q_tilde = quat_mul(q_ref_conj, qk)
-        q0_t = q_tilde[0]
-        qv_t = q_tilde[1:4]
+            # Error quaternion: q_tilde = q_ref^{-1} ⊗ q
+            q_ref_conj = quat_conj(q_ref_k)
+            q_tilde = quat_mul(q_ref_conj, qk)
+            q0_t = q_tilde[0]
+            qv_t = q_tilde[1:4]
 
-        # Angular velocity error
-        w_err = wk - w_ref_k
+            # Angular velocity error
+            w_err = wk - w_ref_k
 
-        # CLF V(x) = 1/2 w_err^T I w_err + (kappa/2) ||qv_t||^2
-        V_k = 0.5 * ca.dot(w_err, I_cas @ w_err) + 0.5 * kappa * ca.dot(qv_t, qv_t)
+            # CLF V(x_k)
+            V_k = 0.5 * ca.dot(w_err, I_cas @ w_err) + 0.5 * kappa * ca.dot(qv_t, qv_t)
+            # V(x_{k+1}) with reference at k+1
+            q_ref_kp1 = Q_ref_seq[:, k+1]
+            w_ref_kp1 = W_ref_seq[:, k+1]
+            q_ref_kp1_conj = quat_conj(q_ref_kp1)
+            q_tilde_next = quat_mul(q_ref_kp1_conj, q_next)
+            qv_t_next = q_tilde_next[1:4]
+            w_err_next = w_next - w_ref_kp1
+            V_next = 0.5 * ca.dot(w_err_next, I_cas @ w_err_next) + 0.5 * kappa * ca.dot(qv_t_next, qv_t_next)
 
-        # Derivative terms (nominal, as in theory):
-        # \dot V = (B×ω)^T m + (kappa*qtilde0/2) * qv_t^T * ω
-        LgV = ca.dot(ca.cross(B_body, wk), mk)
-        LfV = (kappa * q0_t / 2.0) * ca.dot(qv_t, wk)
+            # Discrete-time CLF inequality:
+            # V_{k+1} - V_k <= -alpha*dt * V_k + Delta_k
+            opti.subject_to(V_next - V_k <= -alpha * dt * V_k + Delta[0, k])
 
-        # CLF inequality: LgV + LfV <= -alpha V + Delta
-        opti.subject_to(LgV + LfV <= -alpha * V_k + Delta[0, k])
+            # Slack non-negative
+            opti.subject_to(Delta[0, k] >= 0)
 
-        # Slack non-negative
-        opti.subject_to(Delta[0, k] >= 0)
+        # Input saturation: magnetorquer dipoles and reaction wheel torque
+        opti.subject_to(opti.bounded(-m_max, U[0, k], m_max))   # m_x
+        opti.subject_to(opti.bounded(0.0,   U[1, k], 0.0))      # m_y = 0 (no Y magnetorquer)
+        opti.subject_to(opti.bounded(-m_max, U[2, k], m_max))   # m_z
+        opti.subject_to(opti.bounded(-tau_rw_max, U[3, k], tau_rw_max))  # tau_rw_y
 
-        # Input saturation
-        opti.subject_to(opti.bounded(-m_max, U[0, k], m_max))
-        opti.subject_to(opti.bounded(-m_max, U[1, k], m_max))
-        opti.subject_to(opti.bounded(-m_max, U[2, k], m_max))
-
-    # Objective: minimize sum m^T R m + W_s delta^2
+    # Objective: minimize sum of control and tracking penalties
     J = 0
     for k in range(N_horizon):
-        mk = U[:, k]
-        J += ca.mtimes([mk.T, R_c, mk]) + W_s * (Delta[0, k] ** 2)
-    # Optionally: add terminal CLF cost
-    xN = X[:, -1]
-    qN = xN[0:4]
-    wN = xN[4:7]
-    q_ref_N = Q_ref_seq[:, -1]
-    w_ref_N = W_ref_seq[:, -1]
-    q_tilde_N = quat_mul(quat_conj(q_ref_N), qN)
-    qv_t_N = q_tilde_N[1:4]
-    w_err_N = wN - w_ref_N
-    V_N = 0.5 * ca.dot(w_err_N, I_cas @ w_err_N) + 0.5 * kappa * ca.dot(qv_t_N, qv_t_N)
-    J += 10.0 * V_N  # terminal weight
+        m_k = U[0:3, k]
+        tau_rw_k = U[3, k]
+        xk = X[:, k]
+        qk = xk[0:4]
+        wk = xk[4:7]
+        q_ref_k = Q_ref_seq[:, k]
+        w_ref_k = W_ref_seq[:, k]
+        q_tilde_k = quat_mul(quat_conj(q_ref_k), qk)
+        qv_t_k = q_tilde_k[1:4]
+        w_err_k = wk - w_ref_k
+        # state tracking cost
+        J += ca.dot(w_err_k, Q_w @ w_err_k) + ca.dot(qv_t_k, Q_q @ qv_t_k)
+        # control cost: magnetorquer dipole and reaction wheel torque
+        J += ca.mtimes([m_k.T, R_c, m_k]) + R_rw * (tau_rw_k ** 2)
+        if HP.enable_clf and W_s > 0.0:
+            J += W_s * (Delta[0, k] ** 2)
+    # Optionally: add terminal CLF cost (only if enabled)
+    if HP.enable_clf and terminal_weight > 0.0:
+        xN = X[:, -1]
+        qN = xN[0:4]
+        wN = xN[4:7]
+        q_ref_N = Q_ref_seq[:, -1]
+        w_ref_N = W_ref_seq[:, -1]
+        q_tilde_N = quat_mul(quat_conj(q_ref_N), qN)
+        qv_t_N = q_tilde_N[1:4]
+        w_err_N = wN - w_ref_N
+        V_N = 0.5 * ca.dot(w_err_N, I_cas @ w_err_N) + 0.5 * kappa * ca.dot(qv_t_N, qv_t_N)
+        J += terminal_weight * V_N  # terminal weight
 
     opti.minimize(J)
 
@@ -291,8 +462,8 @@ def build_clf_qp_mpc():
         "print_time": False,
         "ipopt": {
             "print_level": 0,
-            "tol": 1e-6,
-            "max_iter": 200
+            "tol": HP.solver_tol,
+            "max_iter": HP.solver_max_iter
         }
     }
     opti.solver("ipopt", opts)
@@ -325,21 +496,25 @@ def run_simulation():
     mpc = build_clf_qp_mpc()
     opti = mpc["opti"]
     X_var = mpc["X"]
-    U_var = mpc["U"]
+    U_var = mpc["U"]  # actuator sequence [m_x,m_y,m_z,tau_rw_y]
     Delta_var = mpc["Delta"]
     X0_param = mpc["X0"]
     Qref_param = mpc["Q_ref_seq"]
     Wref_param = mpc["W_ref_seq"]
     B_body_param = mpc["B_body"]
 
+    # Results directory (needed for MPC snapshot and final outputs)
+    RESULTS_DIR = HP.results_dir
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
     # Simulation parameters
-    T_total = 1000.0  # [s] simulate 3 minutes
+    T_total = HP.total_time  # [s]
     steps = int(T_total / dt)
 
     # Initial state: 10 deg offset about body Y from initial reference
-    theta0 = 0.0
+    theta0 = HP.theta0
     q_ref0, w_ref0, r_I0 = reference_attitude(theta0)
-    angle0 = np.deg2rad(10.0)
+    angle0 = np.deg2rad(HP.initial_attitude_offset_deg)
     axis_y = np.array([0.0, 1.0, 0.0])
     axis_y = axis_y / np.linalg.norm(axis_y)
     dq0 = np.array([
@@ -361,11 +536,39 @@ def run_simulation():
     log_w = []
     log_w_ref = []
     log_m = []
+    log_tau_rw = []
     log_V = []
     log_delta = []
+    log_angle_err = []
+    log_rate_err = []
 
     # For controllability/observability commentary: log B directions
     log_Bb = []
+
+    solver_success = 0
+    solver_fail = 0
+    solver_iterations = []
+    solver_statuses = []
+
+    # Pre-compute MPC snapshot steps (indices) for visualization
+    snapshot_indices = []
+    if steps > 0:
+        if HP.mpc_snapshot_count <= 0:
+            # Snapshot at every MPC step (full video)
+            snapshot_indices = list(range(steps))
+        else:
+            import numpy as _np
+            # Spread snapshots roughly between 20% and 80% of the simulation
+            start_idx = int(0.2 * steps)
+            end_idx = int(0.8 * steps)
+            snapshot_indices = _np.linspace(
+                start_idx,
+                max(start_idx, end_idx),
+                num=HP.mpc_snapshot_count,
+                dtype=int,
+            )
+            snapshot_indices = sorted(set(int(i) for i in snapshot_indices))
+    mpc_snapshots = []
 
     theta = theta0
 
@@ -378,10 +581,16 @@ def run_simulation():
         w_ref_seq_val = np.zeros((3, N_horizon+1))
         r_I_last = None
         for j in range(N_horizon+1):
-            q_ref_j, w_ref_j, r_I_j = reference_attitude(theta_seq[j])
+            # Always use orbital position for magnetic field
+            q_orbit_j, w_orbit_j, r_I_j = reference_attitude(theta_seq[j])
+            r_I_last = r_I_j
+            if HP.use_sinusoidal_reference:
+                t_ref = t + j * dt
+                q_ref_j, w_ref_j = sinusoid_reference(t_ref)
+            else:
+                q_ref_j, w_ref_j = q_orbit_j, w_orbit_j
             q_ref_seq_val[:, j] = q_ref_j
             w_ref_seq_val[:, j] = w_ref_j
-            r_I_last = r_I_j
 
         # Magnetic field at current state (in inertial → body)
         B_I = earth_B_inertial(r_I_last)
@@ -399,25 +608,44 @@ def run_simulation():
         try:
             sol = opti.solve()
         except RuntimeError as e:
+            solver_fail += 1
+            solver_statuses.append(f"FAIL: {e}")
             print(f"[WARN] IPOPT failed at step {k}, using previous control or zero. Error: {e}")
             if k == 0:
                 m_opt = np.zeros(3)
+                tau_rw_opt = 0.0
             else:
                 m_opt = log_m[-1]
+                tau_rw_opt = log_tau_rw[-1]
         else:
-            m_opt = sol.value(U_var[:, 0]).flatten()
-
-        # Apply saturation guard (should already be satisfied)
-        m_opt = np.clip(m_opt, -m_max, m_max)
+            solver_success += 1
+            stats = opti.stats()
+            solver_statuses.append(stats.get("return_status", "Solve_Succeeded"))
+            iter_field = stats.get("iter_count", stats.get("iterations"))
+            if isinstance(iter_field, dict):
+                iter_value = iter_field.get("iter_count")
+            else:
+                iter_value = iter_field
+            if iter_value is not None:
+                try:
+                    solver_iterations.append(float(iter_value))
+                except (TypeError, ValueError):
+                    pass
+            # First control in horizon: physical actuators
+            u0 = sol.value(U_var[:, 0]).flatten()
+            m_opt = u0[0:3]
+            tau_rw_opt = float(u0[3])
 
         # Integrate actual dynamics one step with disturbance and noise
         q_curr = x0[0:4]
         w_curr = x0[4:7]
+        w_err_curr = w_curr - w_ref_seq_val[:, 0]
 
-        # Compute torque from magnetorquer
+        # Compute torque from actuators: magnetorquer (x,z) + reaction wheel (y)
         tau_mag = np.cross(m_opt, B_body)
-        tau_dist = np.random.normal(0.0, 1e-5, size=3)  # small Gaussian disturbance
-        tau_total = tau_mag + tau_dist
+        tau_rw_vec = np.array([0.0, tau_rw_opt, 0.0])
+        tau_dist = np.random.normal(0.0, HP.disturbance_std, size=3)  # small Gaussian disturbance
+        tau_total = tau_mag + tau_rw_vec + tau_dist
 
         # Angular acceleration
         w_dot_val = I_inv_num @ (tau_total - np.cross(w_curr, I_num @ w_curr))
@@ -444,6 +672,7 @@ def run_simulation():
         q_err0 = np.dot(q_ref_seq_val[:, 0], q_curr)
         q_err0 = np.clip(q_err0, -1.0, 1.0)
         angle_err = 2.0 * np.arccos(np.abs(q_err0))
+        rate_err_norm = np.linalg.norm(w_err_curr)
         V_k += 0.5 * kappa * (1 - q_err0)  # approximate scalar-based term
 
         log_time.append(t)
@@ -452,9 +681,12 @@ def run_simulation():
         log_w.append(w_curr.copy())
         log_w_ref.append(w_ref_seq_val[:, 0].copy())
         log_m.append(m_opt.copy())
+        log_tau_rw.append(tau_rw_opt)
         log_V.append(V_k)
         log_Bb.append(B_body.copy())
-        if 'sol' in locals():
+        log_angle_err.append(np.rad2deg(angle_err))
+        log_rate_err.append(rate_err_norm)
+        if HP.enable_clf and 'sol' in locals():
             try:
                 delta0 = float(sol.value(Delta_var[0, 0]))
             except Exception:
@@ -466,10 +698,33 @@ def run_simulation():
         # Advance orbital angle
         theta += omega_orbit * dt
 
+        # MPC snapshot logging: store history + predicted horizon at selected steps
+        if k in snapshot_indices and 'sol' in locals():
+            hist_len = int(HP.mpc_snapshot_window / dt)
+            hist_start = max(0, len(log_time) - hist_len)
+            snapshot = {
+                "step": k,
+                "t": t,
+                "time_hist": np.array(log_time[hist_start:], copy=True),
+                "q_hist": np.array(log_q[hist_start:], copy=True),
+                "q_ref_hist": np.array(log_q_ref[hist_start:], copy=True),
+                "w_hist": np.array(log_w[hist_start:], copy=True),
+                "w_ref_hist": np.array(log_w_ref[hist_start:], copy=True),
+                "m_hist": np.array(log_m[hist_start:], copy=True),
+                "tau_rw_hist": np.array(log_tau_rw[hist_start:], copy=True),
+                "time_pred": t + dt * np.arange(N_horizon + 1),
+                "X_pred": np.array(sol.value(X_var), dtype=float),
+                "Q_ref_pred": np.array(q_ref_seq_val, dtype=float),
+                "W_ref_pred": np.array(w_ref_seq_val, dtype=float),
+            }
+            mpc_snapshots.append(snapshot)
+
         # Update initial guess for next solve (warm start)
-        opti.set_initial(X_var, sol.value(X_var) if 'sol' in locals() else opti.value(X_var))
-        opti.set_initial(U_var, sol.value(U_var) if 'sol' in locals() else opti.value(U_var))
-        opti.set_initial(Delta_var, sol.value(Delta_var) if 'sol' in locals() else opti.value(Delta_var))
+        if 'sol' in locals():
+            opti.set_initial(X_var, sol.value(X_var))
+            opti.set_initial(U_var, sol.value(U_var))
+            if HP.enable_clf:
+                opti.set_initial(Delta_var, sol.value(Delta_var))
 
     # Convert logs to numpy arrays
     log_time = np.array(log_time)
@@ -481,16 +736,67 @@ def run_simulation():
     log_V = np.array(log_V)
     log_delta = np.array(log_delta)
     log_Bb = np.array(log_Bb)
+    log_tau_rw = np.array(log_tau_rw)
+    log_angle_err = np.array(log_angle_err)
+    log_rate_err = np.array(log_rate_err)
+    dipole_norm = np.linalg.norm(log_m, axis=1)
+    # Torque contributions from magnetorquers and reaction wheel
+    tau_mag_hist = np.cross(log_m, log_Bb)
+    tau_mag_norm = np.linalg.norm(tau_mag_hist, axis=1)
+    tau_rw_norm = np.abs(log_tau_rw)
+    # Time-integrated torque magnitudes (approximate impulse)
+    total_tau_mag = float(np.sum(tau_mag_norm) * dt)
+    total_tau_rw = float(np.sum(tau_rw_norm) * dt)
+    rms_tau_mag = float(np.sqrt(np.mean(tau_mag_norm ** 2))) if tau_mag_norm.size else 0.0
+    rms_tau_rw = float(np.sqrt(np.mean(tau_rw_norm ** 2))) if tau_rw_norm.size else 0.0
+    max_tau_mag = float(np.max(tau_mag_norm)) if tau_mag_norm.size else 0.0
+    max_tau_rw = float(np.max(tau_rw_norm)) if tau_rw_norm.size else 0.0
+    avg_angle = float(np.mean(log_angle_err)) if log_angle_err.size else 0.0
+    peak_angle = float(np.max(log_angle_err)) if log_angle_err.size else 0.0
+    rms_rate = float(np.sqrt(np.mean(log_rate_err ** 2))) if log_rate_err.size else 0.0
+    max_dipole = float(np.max(dipole_norm)) if dipole_norm.size else 0.0
+    max_slack = float(np.max(log_delta)) if log_delta.size else 0.0
+    success_total = max(solver_success + solver_fail, 1)
+    success_pct = 100.0 * solver_success / success_total
+    avg_ipopt_iter = float(np.mean(solver_iterations)) if solver_iterations else float('nan')
 
     # =========================
     #  Plots
     # =========================
 
+    fig0, (ax0a, ax0b) = plt.subplots(2, 1, sharex=True, figsize=(7, 5))
+    ax0a.plot(log_time, log_angle_err, label='Pointing error')
+    ax0a.set_ylabel('Angle error [deg]')
+    ax0a.set_title('Pointing & Rate Tracking Errors')
+    ax0a.grid(True)
+    ax0a.legend(loc='upper right')
+    ax0b.plot(log_time, log_rate_err, color='tab:orange', label='||w - w^d||')
+    ax0b.set_ylabel('Angular-rate error [rad/s]')
+    ax0b.set_xlabel('Time [s]')
+    ax0b.grid(True)
+    ax0b.legend(loc='upper right')
+    fig0.tight_layout()
+
     # Quaternion tracking
     fig1, ax1 = plt.subplots(figsize=(7, 4))
+    q_labels = [r'$q_0$', r'$q_1$', r'$q_2$', r'$q_3$']
+    q_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
     for i in range(4):
-        ax1.plot(log_time, log_q[:, i], label=f'q_{i} actual')
-        ax1.plot(log_time, log_q_ref[:, i], '--', label=f'q_{i} ref' if i == 0 else None)
+        ax1.plot(
+            log_time,
+            log_q[:, i],
+            color=q_colors[i],
+            linewidth=1.5,
+            label=f'{q_labels[i]} actual',
+        )
+        ax1.plot(
+            log_time,
+            log_q_ref[:, i],
+            linestyle='--',
+            linewidth=2.0,
+            color=q_colors[i],
+            label=f'{q_labels[i]} ref',
+        )
     ax1.set_xlabel('Time [s]')
     ax1.set_ylabel('Quaternion components')
     ax1.set_title('Attitude Tracking (Quaternion)')
@@ -501,12 +807,24 @@ def run_simulation():
 
     # Angular velocity tracking
     fig2, ax2 = plt.subplots(figsize=(7, 4))
-    ax2.plot(log_time, log_w[:, 0], label=r'$\omega_x$ actual')
-    ax2.plot(log_time, log_w[:, 1], label=r'$\omega_y$ actual')
-    ax2.plot(log_time, log_w[:, 2], label=r'$\omega_z$ actual')
-    ax2.plot(log_time, log_w_ref[:, 0], '--', label=r'$\omega_x^d$')
-    ax2.plot(log_time, log_w_ref[:, 1], '--', label=r'$\omega_y^d$')
-    ax2.plot(log_time, log_w_ref[:, 2], '--', label=r'$\omega_z^d$')
+    w_labels = [r'$\omega_x$', r'$\omega_y$', r'$\omega_z$']
+    w_colors = ['tab:blue', 'tab:orange', 'tab:green']
+    for i in range(3):
+        ax2.plot(
+            log_time,
+            log_w[:, i],
+            color=w_colors[i],
+            linewidth=1.5,
+            label=f'{w_labels[i]} actual',
+        )
+        ax2.plot(
+            log_time,
+            log_w_ref[:, i],
+            linestyle='--',
+            linewidth=2.0,
+            color=w_colors[i],
+            label=f'{w_labels[i]}^d',
+        )
     ax2.set_xlabel('Time [s]')
     ax2.set_ylabel('Angular velocity [rad/s]')
     ax2.set_title('Body Angular Velocity vs Reference')
@@ -545,6 +863,87 @@ def run_simulation():
     ax4.legend(loc='best')
     fig4.tight_layout()
     # fig4.savefig('dipole_commands.png', dpi=200)
+
+    # =========================
+    #  MPC snapshot animation (history + prediction)
+    # =========================
+    if mpc_snapshots:
+        fig_s, (ax_s1, ax_s2) = plt.subplots(2, 1, sharex=True, figsize=(7, 5))
+
+        def update_mpc_frame(idx):
+            snap = mpc_snapshots[idx]
+            step = snap["step"]
+            t0 = snap["t"]
+            time_hist = snap["time_hist"]
+            q_hist = snap["q_hist"]
+            q_ref_hist = snap["q_ref_hist"]
+            time_pred = snap["time_pred"]
+            X_pred = snap["X_pred"]
+            Q_ref_pred = snap["Q_ref_pred"]
+
+            ax_s1.clear()
+            ax_s2.clear()
+
+            # Attitude (q0) history and predicted horizon
+            ax_s1.plot(time_hist, q_hist[:, 0], color='tab:blue', label=r'$q_0$ actual (history)')
+            ax_s1.plot(time_hist, q_ref_hist[:, 0], '--', color='tab:blue', alpha=0.7, label=r'$q_0$ ref (history)')
+            ax_s1.plot(time_pred, X_pred[0, :], '-.', color='tab:orange', label=r'$q_0$ predicted')
+            ax_s1.plot(time_pred, Q_ref_pred[0, :], ':', color='tab:green', label=r'$q_0$ ref (horizon)')
+            ax_s1.axvline(t0, color='k', linestyle='--', linewidth=0.8)
+            ax_s1.set_ylabel('q0')
+            ax_s1.set_title(f'MPC Snapshot at t = {t0:.1f} s (step {step})')
+            ax_s1.grid(True)
+            ax_s1.legend(loc='best', fontsize=8)
+
+            # Magnetorquer dipole magnitude history
+            m_hist = snap["m_hist"]
+            m_norm_hist = np.linalg.norm(m_hist, axis=1)
+            ax_s2.plot(time_hist, m_norm_hist, color='tab:red', label=r'$||m||$ history')
+            ax_s2.axvline(t0, color='k', linestyle='--', linewidth=0.8)
+            ax_s2.set_xlabel('Time [s]')
+            ax_s2.set_ylabel('Dipole norm [A·m²]')
+            ax_s2.grid(True)
+            ax_s2.legend(loc='best', fontsize=8)
+
+            fig_s.tight_layout()
+            return ax_s1, ax_s2
+
+        mpc_mp4 = os.path.join(RESULTS_DIR, "mpc_snapshot_animation.mp4")
+        mpc_gif = os.path.join(RESULTS_DIR, "mpc_snapshot_animation.gif")
+
+        try:
+            from matplotlib.animation import FFMpegWriter, PillowWriter
+            ani_mpc = animation.FuncAnimation(
+                fig_s,
+                update_mpc_frame,
+                frames=len(mpc_snapshots),
+                interval=500,
+                blit=False,
+            )
+            writer = FFMpegWriter(
+                fps=2,
+                metadata=dict(artist="AE642 CLF-QP"),
+                bitrate=1800,
+                codec="libx264",
+            )
+            ani_mpc.save(mpc_mp4, writer=writer)
+            print(f"Saved MPC snapshot animation to {mpc_mp4}")
+        except Exception as e:
+            print(f"[WARN] Failed to write MPC MP4 via ffmpeg ({e}), falling back to GIF.")
+            try:
+                ani_mpc = animation.FuncAnimation(
+                    fig_s,
+                    update_mpc_frame,
+                    frames=len(mpc_snapshots),
+                    interval=500,
+                    blit=False,
+                )
+                from matplotlib.animation import PillowWriter
+                writer_gif = PillowWriter(fps=2)
+                ani_mpc.save(mpc_gif, writer=writer_gif)
+                print(f"Saved MPC snapshot animation GIF to {mpc_gif}")
+            except Exception as e2:
+                print(f"[WARN] Failed to write MPC GIF as well ({e2}). Skipping MPC animation.")
 
     # =========================
     #  Attitude animation
@@ -604,15 +1003,14 @@ def run_simulation():
         fig5,
         update_frame,
         frames=len(log_time),
-        interval=50,
+        interval=HP.animation_interval_ms,
         blit=False
     )
 
     # =========================
     #  SAVE ALL OUTPUTS TO /results
     # =========================
-    import os
-    RESULTS_DIR = "results"
+    RESULTS_DIR = HP.results_dir
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     # Save raw logs
@@ -625,8 +1023,10 @@ def run_simulation():
     np.save(os.path.join(RESULTS_DIR, "V.npy"), log_V)
     np.save(os.path.join(RESULTS_DIR, "delta.npy"), log_delta)
     np.save(os.path.join(RESULTS_DIR, "B_body.npy"), log_Bb)
+    np.save(os.path.join(RESULTS_DIR, "tau_rw.npy"), log_tau_rw)
 
     # Save figures (PNG)
+    fig0.savefig(os.path.join(RESULTS_DIR, "tracking_errors.png"), dpi=200)
     fig1.savefig(os.path.join(RESULTS_DIR, "quat_tracking.png"), dpi=200)
     fig2.savefig(os.path.join(RESULTS_DIR, "omega_tracking.png"), dpi=200)
     fig3.savefig(os.path.join(RESULTS_DIR, "clf_and_slack.png"), dpi=200)
@@ -638,20 +1038,20 @@ def run_simulation():
     mp4_path = os.path.join(RESULTS_DIR, "attitude_tracking.mp4")
     gif_path = os.path.join(RESULTS_DIR, "attitude_tracking.gif")
 
-    try:
-        writer = FFMpegWriter(
-            fps=20,
-            metadata=dict(artist="AE642 CLF-QP"),
-            bitrate=1800,
-            codec="libx264"
-        )
-        ani.save(mp4_path, writer=writer)
-        print(f"Saved MP4 animation to {mp4_path}")
-    except Exception as e:
-        print(f"[WARN] Failed to write MP4 via ffmpeg ({e}), falling back to GIF.")
-        writer_gif = PillowWriter(fps=15)
-        ani.save(gif_path, writer=writer_gif)
-        print(f"Saved GIF animation to {gif_path}")
+    # try:
+    #     writer = FFMpegWriter(
+    #         fps=20,
+    #         metadata=dict(artist="AE642 CLF-QP"),
+    #         bitrate=1800,
+    #         codec="libx264"
+    #     )
+    #     ani.save(mp4_path, writer=writer)
+    #     print(f"Saved MP4 animation to {mp4_path}")
+    # except Exception as e:
+    #     print(f"[WARN] Failed to write MP4 via ffmpeg ({e}), falling back to GIF.")
+    #     writer_gif = PillowWriter(fps=15)
+    #     ani.save(gif_path, writer=writer_gif)
+    #     print(f"Saved GIF animation to {gif_path}")
 
     # Text summary
     with open(os.path.join(RESULTS_DIR, "summary.txt"), "w") as f:
@@ -659,13 +1059,31 @@ def run_simulation():
         f.write("=========================\n\n")
         f.write(f"Total time simulated: {T_total:.2f} s\n")
         f.write(f"Control frequency: {1/dt:.2f} Hz\n")
-        f.write(f"Horizon length: {N_horizon}\n")
+        f.write(f"Horizon length: {N_horizon} steps ({HORIZON_TIME:.2f} s)\n")
         f.write(f"Magnetorquer max dipole: {m_max} A·m²\n\n")
+        f.write(f"Average pointing error: {avg_angle:.3f} deg (peak {peak_angle:.3f} deg)\n")
+        f.write(f"RMS angular-rate error: {rms_rate:.5f} rad/s\n")
+        f.write(f"Max dipole magnitude: {max_dipole:.2f} A·m²\n")
+        f.write(f"Max slack δ: {max_slack:.3e}\n")
+        f.write("\nTorque usage:\n")
+        f.write(f"  Magnetorquer: RMS |τ_mag| = {rms_tau_mag:.4e} N·m, max = {max_tau_mag:.4e} N·m,\n")
+        f.write(f"                ∑|τ_mag| dt ≈ {total_tau_mag:.4e} N·m·s\n")
+        f.write(f"  Reaction wheel: RMS |τ_rw| = {rms_tau_rw:.4e} N·m, max = {max_tau_rw:.4e} N·m,\n")
+        f.write(f"                  ∑|τ_rw| dt ≈ {total_tau_rw:.4e} N·m·s\n\n")
+        f.write(f"IPOPT success: {solver_success}/{steps} ({success_pct:.1f}%) with {solver_fail} failures\n")
+        f.write(f"Average IPOPT iterations: {avg_ipopt_iter:.1f}\n\n")
         f.write("Controllability Indicator (Cov(B_body) eigenvalues):\n")
         f.write(str(eigvals_B) + "\n\n")
         f.write("Observability:\n")
         f.write("Gyro + magnetometer ensure nonlinear attitude observability over orbit.\n")
         f.write("Time-varying magnetic field excites rotational degrees of freedom.\n")
+
+    print(f"\nHorizon: {N_horizon} steps ({HORIZON_TIME:.2f} s) at dt = {dt:.3f} s")
+    print(f"IPOPT success {solver_success}/{steps} ({success_pct:.1f}%), average iterations {avg_ipopt_iter:.1f}, failures {solver_fail}")
+    print(f"Pointing error avg {avg_angle:.2f} deg (peak {peak_angle:.2f} deg); RMS rate error {rms_rate:.4f} rad/s")
+    print(f"Max |m| {max_dipole:.2f} A·m²; Max slack δ {max_slack:.3e}")
+    print(f"Magnetorquer torque: RMS {rms_tau_mag:.4e} N·m, max {max_tau_mag:.4e} N·m, integral ∑|τ_mag|dt ≈ {total_tau_mag:.4e} N·m·s")
+    print(f"Reaction wheel torque: RMS {rms_tau_rw:.4e} N·m, max {max_tau_rw:.4e} N·m, integral ∑|τ_rw|dt ≈ {total_tau_rw:.4e} N·m·s")
 
     print(f"\nAll logs, plots, and animation saved under ./{RESULTS_DIR}/")
 
