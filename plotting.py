@@ -125,15 +125,20 @@ def main():
     fig_w.savefig(RESULTS_DIR / "report_omega_tracking.png", dpi=300)
 
     # -----------------------------------------------------------------------
-    # 3. Pointing error & rate-error norms
+    # 3. Pointing error & rate-error norms (start at 500 s)
     # -----------------------------------------------------------------------
+    pe_start_idx = np.searchsorted(t, 500.0)
+    t_pe = t[pe_start_idx:]
+    pointing_pe = pointing_err_deg[pe_start_idx:]
+    w_err_norm_pe = w_err_norm[pe_start_idx:]
+
     fig_err, (ax_e1, ax_e2) = plt.subplots(2, 1, sharex=True, figsize=(7, 6))
-    ax_e1.plot(t, pointing_err_deg, color="tab:blue")
+    ax_e1.plot(t_pe, pointing_pe, color="tab:blue")
     ax_e1.set_ylabel("Pointing error [deg]")
     ax_e1.set_title("Pointing & Rate Tracking Errors")
     ax_e1.grid(True)
 
-    ax_e2.plot(t, w_err_norm, color="tab:orange")
+    ax_e2.plot(t_pe, w_err_norm_pe, color="tab:orange")
     ax_e2.set_ylabel(r"$\|\omega - \omega^d\|$ [rad/s]")
     ax_e2.set_xlabel("Time [s]")
     ax_e2.grid(True)

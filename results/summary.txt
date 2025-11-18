@@ -1,27 +1,27 @@
 CLF–QP Simulation Results
 =========================
 
-Total time simulated: 5400.00 s
+Total time simulated: 200.00 s
 Control frequency: 5.00 Hz
 Horizon length: 40 steps (8.00 s)
 Magnetorquer max dipole: 81.9 A·m²
 
-Average pointing error: 0.039 deg (peak 10.000 deg)
-RMS angular-rate error: 0.00151 rad/s
+Average pointing error: 1.095 deg (peak 10.000 deg)
+RMS angular-rate error: 0.00814 rad/s
 Max dipole magnitude: 115.82 A·m²
-Max slack δ: 1.455e-04
+Max slack δ: 1.457e-04
 
 Torque usage:
-  Magnetorquer: RMS |τ_mag| = 1.9719e-04 N·m, max = 2.8422e-03 N·m,
-                ∑|τ_mag| dt ≈ 1.2923e-01 N·m·s
-  Reaction wheel: RMS |τ_rw| = 2.1002e-05 N·m, max = 5.0010e-05 N·m,
-                  ∑|τ_rw| dt ≈ 9.1879e-02 N·m·s
+  Magnetorquer: RMS |τ_mag| = 1.0574e-03 N·m, max = 2.8422e-03 N·m,
+                ∑|τ_mag| dt ≈ 8.6161e-02 N·m·s
+  Reaction wheel: RMS |τ_rw| = 3.3696e-05 N·m, max = 5.0010e-05 N·m,
+                  ∑|τ_rw| dt ≈ 5.6043e-03 N·m·s
 
-IPOPT success: 27000/27000 (100.0%) with 0 failures
-Average IPOPT iterations: 9.1
+IPOPT success: 1000/1000 (100.0%) with 0 failures
+Average IPOPT iterations: 10.7
 
 Controllability Indicator (Cov(B_body) eigenvalues):
-[2.48371738e-07 9.94449961e-01 5.46829250e-03]
+[9.99505474e-01 7.33044665e-06 4.05697052e-04]
 
 Observability:
 Gyro + magnetometer ensure nonlinear attitude observability over orbit.

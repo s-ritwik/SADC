@@ -60,6 +60,7 @@ class HyperParams:
     # mpc_snapshot_count <= 0  => snapshot at every step (full MPC video)
     # mpc_snapshot_count > 0   => that many snapshots spread across the run
     mpc_snapshot_count: int = 0
+    mpc_enable_video: bool = False              # enable/disable MPC snapshot video
     animation_interval_ms: int = 50
     results_dir: str = "results"
     rng_seed: Optional[int] = None
@@ -552,7 +553,7 @@ def run_simulation():
 
     # Pre-compute MPC snapshot steps (indices) for visualization
     snapshot_indices = []
-    if steps > 0:
+    if HP.mpc_enable_video and steps > 0:
         if HP.mpc_snapshot_count <= 0:
             # Snapshot at every MPC step (full video)
             snapshot_indices = list(range(steps))
@@ -699,7 +700,7 @@ def run_simulation():
         theta += omega_orbit * dt
 
         # MPC snapshot logging: store history + predicted horizon at selected steps
-        if k in snapshot_indices and 'sol' in locals():
+        if HP.mpc_enable_video and k in snapshot_indices and 'sol' in locals():
             hist_len = int(HP.mpc_snapshot_window / dt)
             hist_start = max(0, len(log_time) - hist_len)
             snapshot = {
@@ -867,7 +868,7 @@ def run_simulation():
     # =========================
     #  MPC snapshot animation (history + prediction)
     # =========================
-    if mpc_snapshots:
+    if HP.mpc_enable_video and mpc_snapshots:
         fig_s, (ax_s1, ax_s2) = plt.subplots(2, 1, sharex=True, figsize=(7, 5))
 
         def update_mpc_frame(idx):
